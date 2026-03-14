@@ -1,0 +1,12 @@
+{
+  "name": "create-asp-agent",
+  "version": "0.1.1",
+  "description": "Create an ASP agent identity",
+  "bin": { "create-asp-agent": "index.js" },
+  "dependencies": {
+    "asp-create": "^0.2.2"
+  },
+  "keywords": ["asp", "agent", "identity"],
+  "author": "jz2014",
+  "license": "MIT"
+}

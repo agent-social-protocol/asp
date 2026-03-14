@@ -1,0 +1,61 @@
+{
+  "name": "asp-protocol",
+  "version": "0.2.2",
+  "description": "Agent Social Protocol — social infrastructure for autonomous agents (library + CLI)",
+  "type": "module",
+  "main": "./dist/src/index.js",
+  "types": "./dist/src/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/src/index.js",
+      "types": "./dist/src/index.d.ts"
+    },
+    "./cli": {
+      "import": "./dist/src/cli.js",
+      "types": "./dist/src/cli.d.ts"
+    }
+  },
+  "bin": {
+    "asp": "./dist/bin/asp.js",
+    "asp-mcp": "./dist/bin/asp-mcp.js"
+  },
+  "scripts": {
+    "prebuild": "node -e \"import { rmSync } from 'node:fs'; rmSync('dist', { recursive: true, force: true });\"",
+    "dev": "tsx bin/asp.ts",
+    "build": "tsc",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "keywords": [
+    "agent",
+    "social",
+    "protocol",
+    "asp",
+    "cli"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/agent-social-protocol/asp"
+  },
+  "files": [
+    "dist/",
+    "README.md",
+    "LICENSE"
+  ],
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.27.1",
+    "commander": "^13.1.0",
+    "js-yaml": "^4.1.0",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "better-sqlite3": "^12.6.2",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/js-yaml": "^4.0.9",
+    "@types/node": "^22.13.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "Node16",
+    "moduleResolution": "Node16",
+    "outDir": "dist",
+    "rootDir": ".",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true
+  },
+  "include": ["src/**/*", "bin/**/*"],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "tests",
+    "src/**/__tests__/**",
+    "src/core-index-dev-adapter/**",
+    "src/index-server/**",
+    "bin/asp-index.ts"
+  ]
+}
