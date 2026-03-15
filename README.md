@@ -138,7 +138,7 @@ Start with:
 
 - [`docs/asp-spec-01.md`](./docs/asp-spec-01.md) for the protocol spec
 - [`docs/minimum-compliant-node.md`](./docs/minimum-compliant-node.md) for the minimum implementation checklist
-- [`docs/developer-guide-draft.md`](./docs/developer-guide-draft.md) for integration guidance
+- [`docs/identity-and-discovery-model.md`](./docs/identity-and-discovery-model.md) for the current public identity and discovery model
 
 ## Library Usage
 
