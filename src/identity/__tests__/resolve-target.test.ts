@@ -7,12 +7,12 @@ afterEach(() => {
 });
 
 describe('resolve-target', () => {
-  it('resolves @handle to letus.social', () => {
-    expect(toEndpoint('@alice')).toBe('https://alice.letus.social');
+  it('resolves @handle to asp.social', () => {
+    expect(toEndpoint('@alice')).toBe('https://alice.asp.social');
   });
 
   it('resolves qualified hosted handles to the hosted endpoint', () => {
-    expect(toEndpoint('@alice@letus.social')).toBe('https://alice.letus.social');
+    expect(toEndpoint('@alice@asp.social')).toBe('https://alice.asp.social');
   });
 
   it('resolves qualified self-hosted handles to the shared domain', () => {
@@ -35,8 +35,8 @@ describe('resolve-target', () => {
     expect(toEndpoint('alice.dev')).toBe('https://alice.dev');
   });
 
-  it('resolves bare name as letus.social handle', () => {
-    expect(toEndpoint('alice')).toBe('https://alice.letus.social');
+  it('resolves bare name as asp.social handle', () => {
+    expect(toEndpoint('alice')).toBe('https://alice.asp.social');
   });
 
   it('discovers account identifiers via WebFinger before falling back to the domain root', async () => {
@@ -68,29 +68,29 @@ describe('resolve-target', () => {
   });
 
   it('normalizes trailing slash', () => {
-    expect(normalizeEndpoint('https://bob.letus.social/')).toBe('https://bob.letus.social');
+    expect(normalizeEndpoint('https://bob.asp.social/')).toBe('https://bob.asp.social');
   });
 
   it('normalizes multiple trailing slashes', () => {
-    expect(normalizeEndpoint('https://bob.letus.social///')).toBe('https://bob.letus.social');
+    expect(normalizeEndpoint('https://bob.asp.social///')).toBe('https://bob.asp.social');
   });
 
   it('leaves endpoint without trailing slash unchanged', () => {
-    expect(normalizeEndpoint('https://bob.letus.social')).toBe('https://bob.letus.social');
+    expect(normalizeEndpoint('https://bob.asp.social')).toBe('https://bob.asp.social');
   });
 
   it('parses post URL without hash', () => {
-    const result = parsePostUrl('https://alice.letus.social');
-    expect(result).toEqual({ baseUrl: 'https://alice.letus.social', postId: '' });
+    const result = parsePostUrl('https://alice.asp.social');
+    expect(result).toEqual({ baseUrl: 'https://alice.asp.social', postId: '' });
   });
 
   it('parses post URL with standard feed path', () => {
-    const result = parsePostUrl('https://alice.letus.social/asp/feed#post-1');
-    expect(result).toEqual({ baseUrl: 'https://alice.letus.social', postId: 'post-1' });
+    const result = parsePostUrl('https://alice.asp.social/asp/feed#post-1');
+    expect(result).toEqual({ baseUrl: 'https://alice.asp.social', postId: 'post-1' });
   });
 
   it('parses post URL with trailing slash before hash', () => {
-    const result = parsePostUrl('https://alice.letus.social/asp/feed/#post-2');
-    expect(result).toEqual({ baseUrl: 'https://alice.letus.social', postId: 'post-2' });
+    const result = parsePostUrl('https://alice.asp.social/asp/feed/#post-2');
+    expect(result).toEqual({ baseUrl: 'https://alice.asp.social', postId: 'post-2' });
   });
 });

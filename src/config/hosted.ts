@@ -3,9 +3,9 @@ import { accountDomainOrigin, normalizeAccountIdentifier, splitAccountIdentifier
 
 const HOSTED_DEFAULTS = {
   coreIndexUrl: 'https://aspnetwork.dev',
-  hubApiBaseUrl: 'https://letus.social/api',
-  hubWebBaseUrl: 'https://letus.social',
-  hostedHandleDomain: 'letus.social',
+  hubApiBaseUrl: 'https://asp.social/api',
+  hubWebBaseUrl: 'https://asp.social',
+  hostedHandleDomain: 'asp.social',
 } satisfies ASPRuntimeConfig;
 
 export function getHostedRuntimeConfig(overrides: Partial<ASPRuntimeConfig> = {}): Required<Pick<

@@ -31,6 +31,16 @@ describe('runtime config helpers', () => {
     expect(isHostedEndpoint('https://alice.other.example', config)).toBe(false);
   });
 
+  it('uses asp.social as the protocol-layer hosted default', () => {
+    const config = getHostedRuntimeConfig();
+
+    expect(config.hubWebBaseUrl).toBe('https://asp.social');
+    expect(config.hubApiBaseUrl).toBe('https://asp.social/api');
+    expect(config.hostedHandleDomain).toBe('asp.social');
+    expect(buildHostedEndpoint('@alice', config)).toBe('https://alice.asp.social');
+    expect(buildHostedProfileUrl('@alice', config)).toBe('https://asp.social/@alice');
+  });
+
   it('applies CLI defaults separately from hosted defaults', () => {
     const config = getCliRuntimeConfig({ storeDir: '/tmp/asp-test-home' });
 

@@ -1,7 +1,7 @@
 {
   "name": "asp-create",
   "version": "0.2.2",
-  "description": "Shared onboarding engine for letus.social and ASP applications",
+  "description": "Shared onboarding engine for public ASP entry points",
   "type": "module",
   "bin": "./dist/index.js",
   "scripts": {

@@ -479,7 +479,7 @@ describe('ASP MCP server', () => {
     const structured = result.structuredContent as { sent: boolean; identity: string; to: string };
     expect(structured.sent).toBe(true);
     expect(structured.identity).toBe('alice');
-    expect(structured.to).toContain('bob.letus.social');
+    expect(structured.to).toContain('bob.asp.social');
 
     await cleanup();
   });

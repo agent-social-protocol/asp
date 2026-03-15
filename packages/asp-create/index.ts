@@ -78,7 +78,7 @@ function getManifestPath(): string {
 }
 
 function getHubWebBaseUrl(): string {
-  return process.env.ASP_HUB_WEB_URL ?? 'https://letus.social';
+  return process.env.ASP_HUB_WEB_URL ?? 'https://asp.social';
 }
 
 function getHubApiBaseUrl(): string {
@@ -572,31 +572,65 @@ function renderProfileLocation(endpoint: string | null, handle: string | null): 
   return endpoint;
 }
 
-function getCopyConfig(): CopyConfig {
-  const preset = process.env.ASP_CREATE_BRAND_PRESET ?? process.env.CREATE_IDENTITY_BRAND_PRESET;
-
-  if (preset === 'letussocial') {
-    return {
-      poweredBy: 'Powered by Agent Social Protocol',
-      defaultPost: 'Just joined letus.social — ready to connect!',
-      postPrompt: '\n  Your first post [Enter to publish, or type your own]:\n  > ',
-      identityLabel: 'Your primary identity',
-      valueProp: 'Post, follow, and let your agent represent you.',
-      shareLabel: 'Share this to connect with friends:',
-      shareCommand: (target) => `npx letussocial follow ${target}`,
-      renderProfileLocation,
-    };
+function getOptionalCopyOverride(...keys: string[]): string | null {
+  for (const key of keys) {
+    const value = process.env[key];
+    if (typeof value === 'string' && value.length > 0) {
+      return value;
+    }
   }
+  return null;
+}
+
+function getCopyOverride(fallback: string, ...keys: string[]): string {
+  return getOptionalCopyOverride(...keys) ?? fallback;
+}
+
+function getCopyConfig(): CopyConfig {
+  const shareCommandTemplate = getCopyOverride(
+    'asp follow {target}',
+    'ASP_CREATE_SHARE_COMMAND',
+    'CREATE_IDENTITY_SHARE_COMMAND',
+  );
+  const profileBaseUrl = getOptionalCopyOverride(
+    'ASP_CREATE_PROFILE_BASE_URL',
+    'CREATE_IDENTITY_PROFILE_BASE_URL',
+  );
 
   return {
-    poweredBy: null,
-    defaultPost: 'Just set up my agent identity — ready to connect!',
-    postPrompt: '\n  Your first post [Enter for default]:\n  > ',
-    identityLabel: 'Your identity',
-    valueProp: 'Post, follow, and let your agent represent you.',
-    shareLabel: 'Share with friends:',
-    shareCommand: (target) => `asp follow ${target}`,
-    renderProfileLocation,
+    poweredBy: getOptionalCopyOverride('ASP_CREATE_POWERED_BY', 'CREATE_IDENTITY_POWERED_BY'),
+    defaultPost: getCopyOverride(
+      'Just set up my agent identity — ready to connect!',
+      'ASP_CREATE_DEFAULT_POST',
+      'CREATE_IDENTITY_DEFAULT_POST',
+    ),
+    postPrompt: getCopyOverride(
+      '\n  Your first post [Enter for default]:\n  > ',
+      'ASP_CREATE_POST_PROMPT',
+      'CREATE_IDENTITY_POST_PROMPT',
+    ),
+    identityLabel: getCopyOverride(
+      'Your identity',
+      'ASP_CREATE_IDENTITY_LABEL',
+      'CREATE_IDENTITY_IDENTITY_LABEL',
+    ),
+    valueProp: getCopyOverride(
+      'Post, follow, and let your agent represent you.',
+      'ASP_CREATE_VALUE_PROP',
+      'CREATE_IDENTITY_VALUE_PROP',
+    ),
+    shareLabel: getCopyOverride(
+      'Share with friends:',
+      'ASP_CREATE_SHARE_LABEL',
+      'CREATE_IDENTITY_SHARE_LABEL',
+    ),
+    shareCommand: (target) => shareCommandTemplate.replaceAll('{target}', target),
+    renderProfileLocation: (endpoint, handle) => {
+      if (profileBaseUrl && handle && isHostedEndpoint(endpoint)) {
+        return `${profileBaseUrl.replace(/\/+$/, '')}/@${normalizeHandle(handle)}`;
+      }
+      return renderProfileLocation(endpoint, handle);
+    },
   };
 }
 

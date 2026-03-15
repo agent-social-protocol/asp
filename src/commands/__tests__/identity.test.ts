@@ -5,7 +5,7 @@ function makeHostedManifest(): Manifest {
   return {
     protocol: 'asp/1.0',
     entity: {
-      id: 'https://alice.letus.social',
+      id: 'https://alice.asp.social',
       type: 'person',
       name: 'Alice',
       handle: 'alice',
@@ -114,7 +114,7 @@ describe('identity edit', () => {
     expect(updatedManifest.entity.bio).toBe('Updated bio');
     expect(updatedManifest.entity.languages).toEqual(['en', 'fr']);
     expect(updatedManifest.entity.handle).toBe('alice');
-    expect(updatedManifest.entity.id).toBe('https://alice.letus.social');
+    expect(updatedManifest.entity.id).toBe('https://alice.asp.social');
     expect(updatedManifest.entity.tags).toEqual(['ai', 'builders']);
     expect(updatedManifest.skills).toEqual(['research', 'writing']);
     expect(syncHostedManifestTargets).toHaveBeenCalledWith(updatedManifest);

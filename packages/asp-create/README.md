@@ -8,5 +8,8 @@ This package powers:
 - `create-asp-agent`
 - hosted wrappers such as `create-identity` and `letussocial`
 
+Protocol defaults stay infrastructure-neutral. Branded wrappers are expected to
+inject their own hosted URLs and user-facing copy via environment overrides.
+
 It is intended to be consumed as a CLI package dependency rather than imported
 directly by application code.
