@@ -33,7 +33,7 @@ export const indexCommand = new Command('index')
 indexCommand
   .command('register [url]')
   .alias('add')
-  .description(`Register with a Core Index (default: ${DEFAULT_INDEX})`)
+  .description(`Register with ASP Index (default: ${DEFAULT_INDEX})`)
   .action(async (url, _opts, cmd) => {
     const json = cmd.optsWithGlobals().json;
 

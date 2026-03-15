@@ -533,7 +533,7 @@ async function initializeIdentity(args: ParsedArgs): Promise<{
   }
 
   if (args.isPrivate) {
-    console.log('  ○ Core Index registration skipped (private identity)');
+    console.log('  ○ ASP Index registration skipped (private identity)');
   } else {
     const indexed = registerCoreIndex();
     if (indexed) {
@@ -749,7 +749,7 @@ async function main(): Promise<void> {
   console.log('\n  ─────────────────────────────────\n');
   console.log(`  ${copy.identityLabel}: ${shareTarget}`);
   if (created && createdAsPrivate) {
-    console.log('  This identity stays off the ASP Core Index until you choose to publish it.\n');
+    console.log('  This identity stays off ASP Index until you choose to publish it.\n');
     return;
   }
 

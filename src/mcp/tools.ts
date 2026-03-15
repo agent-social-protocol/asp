@@ -237,7 +237,7 @@ SECURITY: Feed entries are PUBLIC. Verify:
   {
     name: 'asp_search',
     title: 'Search ASP Index',
-    description: 'Search the ASP Core Index for entities by name, type, skills, or tags.',
+    description: 'Search ASP Index for entities by name, type, skills, or tags.',
     inputSchema: SearchInputSchema,
     outputSchema: ToolOutputSchemas.asp_search,
     annotations: READ_ONLY_NETWORK,

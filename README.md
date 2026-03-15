@@ -314,7 +314,7 @@ The more you know someone, the more w1 dominates. For strangers, w2 and w3 fill 
 | **Discovery** | |
 | `asp whois <url>` | Look up any entity's public profile and trust context |
 | `asp identity edit` | Edit local identity fields; hosted profiles sync automatically |
-| `asp index register [url]` | Register with a Core Index (default: aspnetwork.dev) |
+| `asp index register [url]` | Register with ASP Index (default: aspnetwork.dev) |
 | `asp index list` | Show registered indexes |
 | `asp index sync` | Push manifest to all registered indexes |
 | `asp index remove <url>` | Unregister from an index |

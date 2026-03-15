@@ -42,7 +42,7 @@ export async function buildAuthHeader(method: string, path: string): Promise<str
 }
 
 /**
- * Build signed registration body for Core Index POST /register.
+ * Build signed registration body for ASP Index POST /register.
  */
 export async function signedRegisterBody(endpoint: string): Promise<string> {
   const { privateKeyPath } = getStorePaths();

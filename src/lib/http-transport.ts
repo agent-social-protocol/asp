@@ -49,7 +49,7 @@ export class HttpASPTransport implements ASPClientTransport {
 
   async searchIndex(runtime: ASPClientRuntime, opts: ASPSearchOptions): Promise<ASPSearchResult[]> {
     if (!this.coreIndexUrl) {
-      throw new Error('ASPClient search requires an explicit Core Index transport or coreIndexUrl');
+      throw new Error('ASPClient search requires an explicit ASP Index transport or coreIndexUrl');
     }
 
     const params = buildSearchParams(opts);
@@ -61,7 +61,7 @@ export class HttpASPTransport implements ASPClientTransport {
       },
     });
     if (!res.ok) {
-      throw new Error(`Core Index search failed: ${await readErrorMessage(res)}`);
+      throw new Error(`ASP Index search failed: ${await readErrorMessage(res)}`);
     }
     const data = await res.json() as { results?: ASPSearchResult[] };
     return data.results ?? [];

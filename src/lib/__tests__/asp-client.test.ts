@@ -143,7 +143,7 @@ describe('ASPClient', () => {
       });
 
       await expect(client.searchIndex({ q: 'bob' }))
-        .rejects.toThrow('explicit Core Index transport or coreIndexUrl');
+        .rejects.toThrow('explicit ASP Index transport or coreIndexUrl');
     });
 
     it('uses endpoint auth by default for hosted identities', async () => {
