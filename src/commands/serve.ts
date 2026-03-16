@@ -133,6 +133,11 @@ export const serveCommand = new Command('serve')
             entries = entries.filter((e) => e.topics?.includes(topic));
           }
 
+          const DEFAULT_FEED_LIMIT = 50;
+          const limitParam = url.searchParams.get('limit');
+          const limit = limitParam ? Math.max(1, Math.min(parseInt(limitParam, 10) || DEFAULT_FEED_LIMIT, DEFAULT_FEED_LIMIT)) : DEFAULT_FEED_LIMIT;
+          entries = entries.slice(0, limit);
+
           if (wantsHtml) {
             const manifest = await readManifest();
             if (!manifest) {
