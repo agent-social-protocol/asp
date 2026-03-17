@@ -3,6 +3,7 @@ import * as z from 'zod/v4';
 import { ToolOutputSchemas } from '../../mcp/tools.js';
 import { createDefaultManifest, ManifestSchema } from '../manifest.js';
 import { MessageSchema, isMessage } from '../message.js';
+import { FeedEntrySchema, isFeedEntry } from '../feed-entry.js';
 
 describe('protocol schemas', () => {
   it('keeps message validation aligned with the protocol model', () => {
@@ -53,6 +54,35 @@ describe('protocol schemas', () => {
     });
 
     expect(invalid.success).toBe(false);
+  });
+
+  it('validates FeedEntry with signal_type and metadata', () => {
+    const base = {
+      id: 'post-1',
+      title: 'Looking for Rust developers',
+      published: new Date().toISOString(),
+      topics: ['rust', 'hiring'],
+      summary: 'We need Rust devs for our project',
+    };
+
+    // Without signal_type/metadata (backward compatible)
+    expect(isFeedEntry(base)).toBe(true);
+
+    // With signal_type
+    expect(isFeedEntry({ ...base, signal_type: 'intent' })).toBe(true);
+
+    // With metadata
+    expect(isFeedEntry({
+      ...base,
+      signal_type: 'intent',
+      metadata: { action: 'find', categories: ['rust', 'backend'] },
+    })).toBe(true);
+
+    // signal_type must be string
+    expect(isFeedEntry({ ...base, signal_type: 123 })).toBe(false);
+
+    // metadata must be Record<string, unknown>
+    expect(isFeedEntry({ ...base, metadata: 'not-an-object' })).toBe(false);
   });
 
   it('parses default manifests with the shared manifest schema', () => {
