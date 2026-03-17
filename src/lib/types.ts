@@ -80,6 +80,6 @@ export interface ASPClientTransport {
   ): Promise<Interaction[]>;
   publish(
     runtime: ASPClientRuntime,
-    opts: { title: string; summary: string; topics?: string[] },
+    opts: { title: string; summary: string; topics?: string[]; signalType?: string; metadata?: Record<string, unknown> },
   ): Promise<ASPPublishResult>;
 }

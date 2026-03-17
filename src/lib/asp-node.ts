@@ -106,6 +106,8 @@ export class ASPNode extends EventEmitter<ASPEventMap> {
     topics?: string[];
     contentUrl?: string;
     contentType?: string;
+    signalType?: string;
+    metadata?: Record<string, unknown>;
   }): Promise<FeedEntry> {
     const manifest = await this.store.get('manifest');
     const entry: FeedEntry = {
@@ -117,6 +119,8 @@ export class ASPNode extends EventEmitter<ASPEventMap> {
       ...(opts.contentUrl && { content_url: opts.contentUrl }),
       ...(opts.contentType && { content_type: opts.contentType }),
       ...(manifest?.entity.id && { author: manifest.entity.id }),
+      ...(opts.signalType && { signal_type: opts.signalType }),
+      ...(opts.metadata && { metadata: opts.metadata }),
     };
 
     const feed = await this.store.get('feed');

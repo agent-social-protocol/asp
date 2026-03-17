@@ -127,7 +127,7 @@ export class HttpASPTransport implements ASPClientTransport {
 
   async publish(
     runtime: ASPClientRuntime,
-    opts: { title: string; summary: string; topics?: string[] },
+    opts: { title: string; summary: string; topics?: string[]; signalType?: string; metadata?: Record<string, unknown> },
   ): Promise<ASPPublishResult> {
     const nodeUrl = runtime.manifest.entity.id;
     const id = randomUUID();
@@ -146,6 +146,8 @@ export class HttpASPTransport implements ASPClientTransport {
         summary: opts.summary,
         topics: opts.topics ?? [],
         published: new Date().toISOString(),
+        ...(opts.signalType && { signal_type: opts.signalType }),
+        ...(opts.metadata && { metadata: opts.metadata }),
       }),
     });
 

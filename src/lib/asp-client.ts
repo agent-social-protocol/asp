@@ -242,7 +242,7 @@ export class ASPClient extends EventEmitter<ASPClientEventMap> {
     return fetchManifest(url);
   }
 
-  async fetchFeed(url: string, opts?: { since?: string; topic?: string }): Promise<RemoteFeed> {
+  async fetchFeed(url: string, opts?: { since?: string; topic?: string; signalType?: string }): Promise<RemoteFeed> {
     return fetchFeed(url, opts);
   }
 
@@ -264,6 +264,8 @@ export class ASPClient extends EventEmitter<ASPClientEventMap> {
     title: string;
     summary: string;
     topics?: string[];
+    signalType?: string;
+    metadata?: Record<string, unknown>;
   }): Promise<{ ok: boolean; id: string; error?: string }> {
     return this._transport.publish(this._runtime(), opts);
   }
