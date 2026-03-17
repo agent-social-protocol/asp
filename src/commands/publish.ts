@@ -16,6 +16,8 @@ export const publishCommand = new Command('publish')
   .option('--file <path>', 'Read content from a file')
   .option('--title <title>', 'Post title')
   .option('--tags <tags>', 'Comma-separated tags')
+  .option('--type <signal_type>', 'Signal type (status, intent, social)')
+  .option('--metadata <json>', 'Structured metadata as JSON string')
   .action(async (inlineContent, opts, cmd) => {
     const json = cmd.optsWithGlobals().json;
 
@@ -39,6 +41,17 @@ export const publishCommand = new Command('publish')
     const title = opts.title || content.slice(0, 60).replace(/\n/g, ' ');
     const topics = opts.tags ? opts.tags.split(',').map((t: string) => t.trim()).filter(Boolean) : [];
 
+    let parsedMetadata: Record<string, unknown> | undefined;
+    if (opts.metadata) {
+      try {
+        parsedMetadata = JSON.parse(opts.metadata);
+      } catch {
+        output(json ? { error: 'Invalid --metadata JSON' } : 'Invalid --metadata JSON.', json);
+        process.exitCode = 1;
+        return;
+      }
+    }
+
     const manifest = await readManifest();
     const existing = await readFeed();
     const id = generateId(title, existing);
@@ -50,6 +63,8 @@ export const publishCommand = new Command('publish')
       topics,
       summary: content,
       ...(manifest?.entity.id && { author: manifest.entity.id }),
+      ...(opts.type && { signal_type: opts.type }),
+      ...(parsedMetadata && { metadata: parsedMetadata }),
     };
 
     const hosted = await isHosted();
@@ -80,6 +95,7 @@ export const publishCommand = new Command('publish')
     } else {
       console.log(`Published: ${entry.id}`);
       console.log(`  Title:  ${entry.title}`);
+      if (entry.signal_type) console.log(`  Type:   ${entry.signal_type}`);
       if (topics.length) console.log(`  Tags:   ${topics.join(', ')}`);
 
       // Post-publish tip for hosted users
