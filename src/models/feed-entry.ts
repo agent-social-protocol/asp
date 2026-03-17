@@ -12,6 +12,8 @@ export const FeedEntrySchema = z.object({
   author: z.string().optional(),
   repost_of: z.string().optional(),
   reply_to: z.string().optional(),
+  signal_type: z.string().optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
 });
 export type FeedEntry = z.infer<typeof FeedEntrySchema>;
 
