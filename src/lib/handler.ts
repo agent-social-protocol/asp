@@ -166,6 +166,11 @@ export function createASPHandler(
           entries = entries.filter((e) => e.topics?.includes(topic));
         }
 
+        const signalType = url.searchParams.get('signal_type');
+        if (signalType) {
+          entries = entries.filter((e) => e.signal_type === signalType);
+        }
+
         const limitParam = url.searchParams.get('limit');
         const limit = limitParam ? Math.max(1, Math.min(parseInt(limitParam, 10) || maxFeedLimit, maxFeedLimit)) : maxFeedLimit;
         entries = entries.slice(0, limit);
