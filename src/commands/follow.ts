@@ -54,8 +54,8 @@ export const followCommand = new Command('follow')
       return;
     }
 
-    // Send follow interaction
-    const result = await doInteraction('follow', targetUrl, undefined, false, json, !json);
+    // Send follow interaction (suppress output — follow handles its own)
+    const result = await doInteraction('follow', targetUrl, undefined, false, false, true);
 
     // Save follow locally
     try {
@@ -73,7 +73,11 @@ export const followCommand = new Command('follow')
     const targetDisplay = displayHandle(targetUrl);
 
     if (json) {
-      // JSON output handled by doInteraction already
+      output({
+        status: result.status === 'error' ? 'error' : 'followed',
+        target: { url: targetUrl, name: targetManifest.entity?.name, handle: targetManifest.entity?.handle },
+        ...(result.warning && { warning: result.warning }),
+      }, true);
       return;
     }
 
@@ -98,8 +102,8 @@ export const unfollowCommand = new Command('unfollow')
 
     const targetUrl = await resolveEndpoint(target);
 
-    // Send unfollow interaction (best-effort)
-    const result = await doInteraction('unfollow', targetUrl, undefined, false, json, !json);
+    // Send unfollow interaction (suppress output — unfollow handles its own)
+    const result = await doInteraction('unfollow', targetUrl, undefined, false, false, true);
 
     // Remove local follow
     try {
@@ -108,11 +112,18 @@ export const unfollowCommand = new Command('unfollow')
       // Not following — not an error
     }
 
-    if (!json) {
-      console.log(`  \u2713 Unfollowed ${displayHandle(targetUrl)}`);
-      if (result.warning) {
-        console.log(`    (${result.warning})`);
-      }
+    if (json) {
+      output({
+        status: result.status === 'error' ? 'error' : 'unfollowed',
+        target: { url: targetUrl, handle: displayHandle(targetUrl) },
+        ...(result.warning && { warning: result.warning }),
+      }, true);
+      return;
+    }
+
+    console.log(`  \u2713 Unfollowed ${displayHandle(targetUrl)}`);
+    if (result.warning) {
+      console.log(`    (${result.warning})`);
     }
   });
 
@@ -123,7 +134,7 @@ export const followingCommand = new Command('following')
     const subs = await readFollowing();
 
     if (json) {
-      output(subs, true);
+      output({ following: subs }, true);
       return;
     }
 

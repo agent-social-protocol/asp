@@ -63,6 +63,7 @@ export const whoisCommand = new Command('whois')
           tags: entity?.tags,
           languages: entity?.languages,
         },
+        skills: manifest?.skills,
         capabilities: manifest?.capabilities,
         local_context: {
           following: isFollowing,
