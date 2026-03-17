@@ -10,10 +10,11 @@ export interface RemoteFeed {
   error?: string;
 }
 
-export async function fetchFeed(baseUrl: string, opts?: { since?: string; topic?: string }): Promise<RemoteFeed> {
+export async function fetchFeed(baseUrl: string, opts?: { since?: string; topic?: string; signalType?: string }): Promise<RemoteFeed> {
   const url = buildEndpointUrl(baseUrl, '/asp/feed');
   if (opts?.since) url.searchParams.set('since', opts.since);
   if (opts?.topic) url.searchParams.set('topic', opts.topic);
+  if (opts?.signalType) url.searchParams.set('signal_type', opts.signalType);
 
   try {
     const res = await fetchWithTimeout(url.toString(), {

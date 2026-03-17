@@ -13,6 +13,7 @@ export const feedCommand = new Command('feed')
   .description('Fetch and display feed from entities you follow')
   .option('--from <url>', 'Only show posts from this source')
   .option('--since <date>', 'Only show posts since this date')
+  .option('--type <signal_type>', 'Filter by signal type')
   .action(async (opts, cmd) => {
     const json = cmd.optsWithGlobals().json;
 
@@ -33,7 +34,7 @@ export const feedCommand = new Command('feed')
     }
 
     const results = await Promise.allSettled(
-      subs.map((s) => fetchFeed(s.url, { since: opts.since }))
+      subs.map((s) => fetchFeed(s.url, { since: opts.since, signalType: opts.type }))
     );
 
     const merged: MergedEntry[] = [];
@@ -56,7 +57,12 @@ export const feedCommand = new Command('feed')
     let filtered = merged;
     if (opts.since) {
       const sinceDate = new Date(opts.since).getTime();
-      filtered = merged.filter((e) => new Date(e.published).getTime() >= sinceDate);
+      filtered = filtered.filter((e) => new Date(e.published).getTime() >= sinceDate);
+    }
+
+    // Client-side signal_type filter (in case remote doesn't support it)
+    if (opts.type) {
+      filtered = filtered.filter((e) => e.signal_type === opts.type);
     }
 
     // Sort newest first
@@ -74,6 +80,7 @@ export const feedCommand = new Command('feed')
         console.log(`\n--- ${entry.title} ---`);
         console.log(`  From:      ${entry.source}`);
         console.log(`  Published: ${entry.published}`);
+        if (entry.signal_type) console.log(`  Type:      ${entry.signal_type}`);
         if (entry.topics?.length) console.log(`  Tags:      ${entry.topics.join(', ')}`);
         console.log(`  ${entry.summary.slice(0, 200)}${entry.summary.length > 200 ? '...' : ''}`);
       }
