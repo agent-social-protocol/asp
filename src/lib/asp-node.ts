@@ -82,6 +82,12 @@ export class ASPNode extends EventEmitter<ASPEventMap> {
       ...(opts.threadId && { thread_id: opts.threadId }),
     };
 
+    // Sign message metadata (same pattern as sendInteraction)
+    if (this._privateKey) {
+      const sigPayload = `${msg.id}:${from}:${targetUrl}:${msg.intent}:${msg.timestamp}`;
+      msg.signature = signPayload(sigPayload, this._privateKey);
+    }
+
     // Store plaintext locally
     const inbox = await this.store.get('inbox');
     inbox.push(msg);
@@ -89,9 +95,15 @@ export class ASPNode extends EventEmitter<ASPEventMap> {
 
     // Encrypt if recipient supports it
     let toSend = msg;
-    const encKey = await getRecipientEncryptionKey(targetUrl);
-    if (encKey) {
-      toSend = encryptMessageContent(msg, encKey);
+    const encryption = await getRecipientEncryptionKey(targetUrl);
+    if (encryption.status === 'supported') {
+      toSend = encryptMessageContent(msg, encryption.key);
+    } else if (encryption.status === 'error') {
+      return {
+        ok: false,
+        message: msg,
+        error: `Could not determine recipient encryption support: ${encryption.error}`,
+      };
     }
 
     // Send to remote
