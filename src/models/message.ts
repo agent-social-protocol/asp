@@ -28,6 +28,7 @@ export const MessageSchema = z.object({
   initiated_by: MessageInitiatorSchema,
   reply_to: z.string().optional(),
   thread_id: z.string().optional(),
+  signature: z.string().optional(),
 });
 export type Message = z.infer<typeof MessageSchema>;
 
