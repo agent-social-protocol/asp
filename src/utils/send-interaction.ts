@@ -1,4 +1,3 @@
-import yaml from 'js-yaml';
 import type { Interaction } from '../models/interaction.js';
 import { buildEndpointUrl } from './endpoint-url.js';
 import { fetchWithTimeout } from './fetch-with-timeout.js';
@@ -8,8 +7,8 @@ export async function sendInteraction(endpointUrl: string, interaction: Interact
     const url = buildEndpointUrl(endpointUrl, '/asp/interactions');
     const res = await fetchWithTimeout(url.toString(), {
       method: 'POST',
-      headers: { 'Content-Type': 'application/yaml' },
-      body: yaml.dump(interaction),
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(interaction),
     });
     if (!res.ok) {
       return { ok: false, error: `HTTP ${res.status}` };
