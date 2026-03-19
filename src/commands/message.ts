@@ -10,6 +10,7 @@ import { getRecipientEncryptionKey, encryptMessageContent, isEncryptedMessage, d
 import { readFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import type { Message } from '../models/message.js';
+import { signPayload } from '../utils/crypto.js';
 import { resolveEndpoint } from '../identity/resolve-target.js';
 import { buildEndpointPath, buildEndpointUrl } from '../utils/endpoint-url.js';
 
@@ -24,7 +25,13 @@ export const messageCommand = new Command('message')
   .option('--thread <id>', 'Thread ID (auto-set from reply-to if omitted)')
   .action(async (targetUrl, opts, cmd) => {
     const json = cmd.optsWithGlobals().json;
-    targetUrl = await resolveEndpoint(targetUrl);
+    try {
+      targetUrl = await resolveEndpoint(targetUrl);
+    } catch (err) {
+      output(json ? { error: (err as Error).message } : (err as Error).message, json);
+      process.exitCode = 1;
+      return;
+    }
 
     if (!storeInitialized()) {
       output(json ? { error: 'Not initialized' } : 'Not initialized. Run `asp init` first.', json);
@@ -72,14 +79,30 @@ export const messageCommand = new Command('message')
       ...(opts.thread && { thread_id: opts.thread }),
     };
 
+    // Sign message metadata if private key available
+    const { privateKeyPath } = getStorePaths();
+    if (existsSync(privateKeyPath)) {
+      const privateKey = await readFile(privateKeyPath, 'utf-8');
+      const sigPayload = `${message.id}:${fromId}:${targetUrl}:${message.intent}:${message.timestamp}`;
+      message.signature = signPayload(sigPayload, privateKey);
+    }
+
     // Save plaintext copy locally
     await addMessage(message);
 
     // Encrypt if recipient supports it
     let toSend = message;
-    const encKey = await getRecipientEncryptionKey(targetUrl);
-    if (encKey) {
-      toSend = encryptMessageContent(message, encKey);
+    const encryption = await getRecipientEncryptionKey(targetUrl);
+    if (encryption.status === 'supported') {
+      toSend = encryptMessageContent(message, encryption.key);
+    } else if (encryption.status === 'error') {
+      const warning = `Could not determine recipient encryption support: ${encryption.error}`;
+      if (json) {
+        output({ status: 'saved_locally', warning, message }, true);
+      } else {
+        console.log(`Message saved locally (${warning})`);
+      }
+      return;
     }
 
     // Send to target
