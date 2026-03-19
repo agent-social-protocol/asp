@@ -162,7 +162,7 @@ export class ASPNode extends EventEmitter<ASPEventMap> {
 
     // Auto-sign if private key available
     if (this._privateKey) {
-      const payload = `${from}:${action}:${opts?.target ?? ''}:${timestamp}`;
+      const payload = `${from}:${targetUrl}:${action}:${opts?.target ?? ''}:${timestamp}`;
       interaction.signature = signPayload(payload, this._privateKey);
     }
 
