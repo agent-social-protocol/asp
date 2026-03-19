@@ -67,6 +67,14 @@ describe('resolve-target', () => {
     await expect(resolveEndpoint('alice@example.com')).resolves.toBe('https://example.com');
   });
 
+  it('surfaces discovery failures instead of guessing the domain root', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('network down')));
+
+    await expect(resolveEndpoint('alice@example.com')).rejects.toThrow(
+      'Could not resolve alice@example.com: network down',
+    );
+  });
+
   it('normalizes trailing slash', () => {
     expect(normalizeEndpoint('https://bob.asp.social/')).toBe('https://bob.asp.social');
   });

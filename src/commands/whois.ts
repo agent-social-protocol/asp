@@ -14,7 +14,13 @@ export const whoisCommand = new Command('whois')
   .argument('<url>', 'Target (@handle, domain, or URL)')
   .action(async (url, _opts, cmd) => {
     const json = cmd.optsWithGlobals().json;
-    url = normalizeEndpoint(await resolveEndpoint(url));
+    try {
+      url = normalizeEndpoint(await resolveEndpoint(url));
+    } catch (err) {
+      output(json ? { error: (err as Error).message } : (err as Error).message, json);
+      process.exitCode = 1;
+      return;
+    }
 
     if (!storeInitialized()) {
       output(json ? { error: 'Not initialized' } : 'Not initialized. Run `asp init` first.', json);

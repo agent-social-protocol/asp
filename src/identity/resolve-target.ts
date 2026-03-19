@@ -12,8 +12,11 @@ export async function resolveEndpoint(arg: string): Promise<string> {
   }
 
   const discovered = await discoverAccountEndpoint(account);
-  if (discovered) {
-    return discovered;
+  if (discovered.status === 'resolved') {
+    return discovered.endpoint;
+  }
+  if (discovered.status === 'error') {
+    throw new Error(`Could not resolve ${account}: ${discovered.error}`);
   }
 
   const parts = splitAccountIdentifier(account);

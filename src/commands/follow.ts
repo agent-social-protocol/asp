@@ -44,7 +44,14 @@ export const followCommand = new Command('follow')
       return;
     }
 
-    const targetUrl = await resolveEndpoint(target);
+    let targetUrl: string;
+    try {
+      targetUrl = await resolveEndpoint(target);
+    } catch (err) {
+      output(json ? { error: (err as Error).message } : (err as Error).message, json);
+      process.exitCode = 1;
+      return;
+    }
 
     // Validate target
     const targetManifest = await fetchTargetManifest(targetUrl);
@@ -100,7 +107,14 @@ export const unfollowCommand = new Command('unfollow')
       return;
     }
 
-    const targetUrl = await resolveEndpoint(target);
+    let targetUrl: string;
+    try {
+      targetUrl = await resolveEndpoint(target);
+    } catch (err) {
+      output(json ? { error: (err as Error).message } : (err as Error).message, json);
+      process.exitCode = 1;
+      return;
+    }
 
     // Send unfollow interaction (suppress output — unfollow handles its own)
     const result = await doInteraction('unfollow', targetUrl, undefined, false, false, true);

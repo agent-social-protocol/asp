@@ -14,6 +14,11 @@ interface WebFingerDocument {
   links?: unknown[];
 }
 
+export type AccountEndpointDiscoveryResult =
+  | { status: 'resolved'; endpoint: string }
+  | { status: 'not_found' }
+  | { status: 'error'; error: string };
+
 export function buildAccountIdentifier(handle: string, domain: string): string {
   return `${handle.replace(/^@/, '')}@${domain.toLowerCase()}`;
 }
@@ -210,24 +215,47 @@ export function extractEndpointFromWebFinger(document: unknown): string | null {
   );
 }
 
-export async function discoverAccountEndpoint(account: string): Promise<string | null> {
+export async function discoverAccountEndpoint(account: string): Promise<AccountEndpointDiscoveryResult> {
+  let res: Response;
   try {
-    const res = await fetch(buildWebFingerUrl(account), {
+    res = await fetch(buildWebFingerUrl(account), {
       headers: {
         Accept: 'application/jrd+json, application/json',
       },
     });
-    if (!res.ok) {
-      return null;
-    }
-
-    const contentType = res.headers.get('content-type') || '';
-    if (!contentType.includes('json')) {
-      return null;
-    }
-
-    return extractEndpointFromWebFinger(await res.json());
-  } catch {
-    return null;
+  } catch (error) {
+    return {
+      status: 'error',
+      error: error instanceof Error ? error.message : String(error),
+    };
   }
+
+  if (res.status === 404) {
+    return { status: 'not_found' };
+  }
+  if (!res.ok) {
+    return { status: 'error', error: `HTTP ${res.status}` };
+  }
+
+  const contentType = res.headers.get('content-type') || '';
+  if (!contentType.includes('json')) {
+    return { status: 'error', error: `Unexpected content type: ${contentType || 'unknown'}` };
+  }
+
+  let document: unknown;
+  try {
+    document = await res.json();
+  } catch (error) {
+    return {
+      status: 'error',
+      error: error instanceof Error ? error.message : 'Invalid JSON response',
+    };
+  }
+
+  const endpoint = extractEndpointFromWebFinger(document);
+  if (!endpoint) {
+    return { status: 'error', error: 'WebFinger response missing endpoint link' };
+  }
+
+  return { status: 'resolved', endpoint };
 }
