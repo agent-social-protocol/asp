@@ -189,15 +189,23 @@ export class ASPClient extends EventEmitter<ASPClientEventMap> {
       ...(opts.threadId && { thread_id: opts.threadId }),
     };
 
+    // Sign message metadata (before encryption — signature covers cleartext metadata)
+    if (this._privateKey) {
+      const sigPayload = `${msg.id}:${from}:${targetUrl}:${msg.intent}:${msg.timestamp}`;
+      msg.signature = signPayload(sigPayload, this._privateKey);
+    }
+
     // Encrypt if recipient supports it
     let toSend = msg;
-    try {
-      const encKey = await getRecipientEncryptionKey(targetUrl);
-      if (encKey) {
-        toSend = encryptMessageContent(msg, encKey);
-      }
-    } catch {
-      // Recipient doesn't support encryption or unreachable — send plaintext
+    const encryption = await getRecipientEncryptionKey(targetUrl);
+    if (encryption.status === 'supported') {
+      toSend = encryptMessageContent(msg, encryption.key);
+    } else if (encryption.status === 'error') {
+      return {
+        ok: false,
+        message: msg,
+        error: `Could not determine recipient encryption support: ${encryption.error}`,
+      };
     }
 
     try {
