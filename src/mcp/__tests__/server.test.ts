@@ -453,10 +453,24 @@ describe('ASP MCP server', () => {
   it('returns structured content from asp_send_message', async () => {
     const alice = makeTempIdentity('@alice', 'Alice');
     tempDirs.push(alice.dir);
+    const bobKeys = generateKeyPair();
+    const bobManifest = createDefaultManifest({
+      id: 'https://bob.asp.social',
+      type: 'agent',
+      name: 'Bob',
+      handle: '@bob',
+      bio: 'Test agent Bob',
+      languages: ['en'],
+      publicKey: bobKeys.publicKey,
+    });
 
     vi.stubGlobal('fetch', vi.fn().mockImplementation((url: unknown) => {
-      if (String(url).includes('/.well-known/asp.yaml')) {
-        return Promise.resolve({ ok: false, status: 404 });
+      if (String(url) === 'https://bob.asp.social/.well-known/asp.yaml') {
+        return Promise.resolve({
+          ok: true,
+          headers: { get: () => 'application/json' },
+          text: () => Promise.resolve(JSON.stringify(bobManifest)),
+        });
       }
       if (String(url).includes('/asp/inbox')) {
         return Promise.resolve({

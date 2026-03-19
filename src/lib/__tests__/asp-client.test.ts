@@ -479,6 +479,21 @@ describe('ASPClient', () => {
       expect(result.message.initiated_by).toBe('agent');
     });
 
+    it('does not fall back to plaintext when encryption support lookup fails', async () => {
+      const mockFetch = vi.fn().mockRejectedValue(new Error('offline'));
+      vi.stubGlobal('fetch', mockFetch);
+      const client = new ASPClient({ identityDir: tmpDir });
+
+      const result = await client.sendMessage('https://bob.asp.social', {
+        intent: 'greet',
+        text: 'Hello Bob',
+      });
+
+      expect(result.ok).toBe(false);
+      expect(result.error).toBe('Could not determine recipient encryption support: offline');
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+    });
+
     it('interact returns error on network failure without throwing', async () => {
       const client = new ASPClient({ identityDir: tmpDir });
       const result = await client.interact('https://bob.asp.social', 'like', {
