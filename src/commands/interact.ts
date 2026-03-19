@@ -40,7 +40,7 @@ export async function doInteraction(action: string, target: string, content: str
   const { privateKeyPath } = getStorePaths();
   if (!isLocal && from && existsSync(privateKeyPath)) {
     const privateKeyPem = await readFile(privateKeyPath, 'utf-8');
-    const payload = `${from}:${action}:${resourceTarget ?? ''}:${timestamp}`;
+    const payload = `${from}:${target}:${action}:${resourceTarget ?? ''}:${timestamp}`;
     interaction.signature = signPayload(payload, privateKeyPem);
   }
 
@@ -76,7 +76,14 @@ export const interactCommand = new Command('interact')
   .argument('[content]', 'Optional content (e.g. comment text)')
   .option('--local', 'Save locally only, do not send to target')
   .action(async (action, target, content, opts, cmd) => {
-    const resolved = await resolveEndpoint(target);
+    let resolved: string;
+    try {
+      resolved = await resolveEndpoint(target);
+    } catch (err) {
+      output(cmd.optsWithGlobals().json ? { error: (err as Error).message } : (err as Error).message, cmd.optsWithGlobals().json);
+      process.exitCode = 1;
+      return;
+    }
     const { baseUrl, postId } = parsePostUrl(resolved);
     const endpoint = baseUrl;
     const resource = postId ? resolved : undefined;
