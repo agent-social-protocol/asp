@@ -186,7 +186,9 @@ await node.publish({
 });
 ```
 
-The CLI is a dev/debug tool built on the same library.
+The CLI and MCP server are protocol-native tools built on the same library.
+App-facing surfaces should layer on top of ASP rather than adding product
+commands directly into `asp`.
 
 ## How It Works
 
