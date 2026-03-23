@@ -1,19 +1,29 @@
-import { describe, expect, it, beforeEach, afterEach } from 'vitest';
+import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest';
 import http from 'node:http';
 import { createASPHandler } from '../handler.js';
 import { MemoryStore } from '../store.js';
 import { createDefaultManifest } from '../../models/manifest.js';
 import type { FeedEntry } from '../../models/feed-entry.js';
+import type { InboxEntry } from '../../models/inbox-entry.js';
+import { generateKeyPair, signPayload } from '../../utils/crypto.js';
+import { buildInboxEntrySignaturePayload } from '../../utils/inbox-entry.js';
 
-function makeRequest(url: string, opts?: { accept?: string }): Promise<{ status: number; body: unknown }> {
+function makeRequest(
+  url: string,
+  opts?: { method?: string; accept?: string; body?: unknown },
+): Promise<{ status: number; body: unknown }> {
   return new Promise((resolve, reject) => {
     const parsed = new URL(url);
+    const bodyStr = opts?.body ? JSON.stringify(opts.body) : undefined;
     const req = http.request({
       hostname: parsed.hostname,
       port: parsed.port,
       path: parsed.pathname + parsed.search,
-      method: 'GET',
-      headers: { Accept: opts?.accept ?? 'application/json' },
+      method: opts?.method ?? 'GET',
+      headers: {
+        Accept: opts?.accept ?? 'application/json',
+        ...(bodyStr && { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(bodyStr) }),
+      },
     }, (res) => {
       let data = '';
       res.on('data', (chunk) => { data += chunk; });
@@ -26,6 +36,7 @@ function makeRequest(url: string, opts?: { accept?: string }): Promise<{ status:
       });
     });
     req.on('error', reject);
+    if (bodyStr) req.write(bodyStr);
     req.end();
   });
 }
@@ -103,5 +114,79 @@ describe('handler signal_type filter', () => {
 
   afterEach(() => {
     server?.close();
+  });
+});
+
+describe('handler inbox dedupe', () => {
+  let server: http.Server;
+  let port: number;
+  const senderKeyPair = generateKeyPair();
+
+  beforeEach(async () => {
+    const store = new MemoryStore();
+    const manifest = createDefaultManifest({
+      id: 'https://receiver.example',
+      type: 'agent',
+      name: 'Receiver',
+      handle: '@receiver',
+      bio: 'receiver',
+      languages: ['en'],
+      publicKey: 'ed25519:receiver',
+    });
+    await store.set('manifest', manifest);
+
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      headers: {
+        get: (name: string) => name.toLowerCase() === 'content-type' ? 'application/json' : null,
+      },
+      text: () => Promise.resolve(JSON.stringify(createDefaultManifest({
+        id: 'https://sender.example',
+        type: 'agent',
+        name: 'Sender',
+        handle: '@sender',
+        bio: 'sender',
+        languages: ['en'],
+        publicKey: senderKeyPair.publicKey,
+      }))),
+    }));
+
+    const handler = createASPHandler(store);
+    server = http.createServer(handler);
+    await new Promise<void>((resolve) => server.listen(0, resolve));
+    port = (server.address() as { port: number }).port;
+  });
+
+  afterEach(() => {
+    server?.close();
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  it('rejects duplicate sender-scoped inbox entries', async () => {
+    const entry: InboxEntry = {
+      id: 'dup-1',
+      from: 'https://sender.example',
+      to: 'https://receiver.example',
+      kind: 'interaction',
+      type: 'follow',
+      target: 'https://receiver.example',
+      timestamp: new Date().toISOString(),
+      signature: '',
+    };
+    entry.signature = signPayload(buildInboxEntrySignaturePayload(entry), senderKeyPair.privateKey);
+
+    const first = await makeRequest(`http://localhost:${port}/asp/inbox`, {
+      method: 'POST',
+      body: entry,
+    });
+    const second = await makeRequest(`http://localhost:${port}/asp/inbox`, {
+      method: 'POST',
+      body: entry,
+    });
+
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(409);
+    expect(second.body).toEqual({ error: 'Duplicate inbox entry (already received)' });
   });
 });

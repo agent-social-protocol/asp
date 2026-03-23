@@ -3,7 +3,7 @@ import { getStorePaths } from './index.js';
 import { loadYaml, dumpYaml } from '../utils/yaml.js';
 import type { InboxEntry } from '../models/inbox-entry.js';
 import type { Message } from '../models/message.js';
-import { inboxEntryToMessage, messageToInboxEntry } from '../utils/inbox-entry.js';
+import { hasSenderScopedEntryIdentity, inboxEntryToMessage, messageToInboxEntry } from '../utils/inbox-entry.js';
 
 interface InboxFile {
   sent: InboxEntry[];
@@ -32,6 +32,9 @@ export async function addSentEntry(entry: InboxEntry): Promise<void> {
 
 export async function addReceivedEntry(entry: InboxEntry): Promise<void> {
   const data = await readInbox();
+  if (hasSenderScopedEntryIdentity(data.received, entry)) {
+    return;
+  }
   data.received.push(entry);
   await writeInbox(data);
 }

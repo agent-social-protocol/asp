@@ -36,6 +36,8 @@ export function interactionToInboxEntry(interaction: Interaction): InboxEntry {
 
 export function inboxEntryToMessage(entry: InboxEntry): Message | null {
   if (entry.kind !== 'message') return null;
+  if (!entry.initiated_by) return null;
+  if (typeof entry.content?.text !== 'string') return null;
   return {
     id: entry.id,
     from: entry.from,
@@ -43,11 +45,11 @@ export function inboxEntryToMessage(entry: InboxEntry): Message | null {
     timestamp: entry.timestamp,
     intent: entry.type,
     content: {
-      text: entry.content?.text ?? '',
+      text: entry.content.text,
       ...(entry.content?.data && { data: entry.content.data }),
       ...(entry.content?.attachments && { attachments: entry.content.attachments }),
     },
-    initiated_by: entry.initiated_by ?? 'agent',
+    initiated_by: entry.initiated_by,
     ...(entry.reply_to && { reply_to: entry.reply_to }),
     ...(entry.thread_id && { thread_id: entry.thread_id }),
     ...(entry.signature && { signature: entry.signature }),
@@ -70,4 +72,11 @@ export function inboxEntryToInteraction(entry: InboxEntry): Interaction | null {
 
 export function buildInboxEntrySignaturePayload(entry: Pick<InboxEntry, 'id' | 'from' | 'to' | 'kind' | 'type' | 'timestamp' | 'target'>): string {
   return `${entry.id}:${entry.from}:${entry.to}:${entry.kind}:${entry.type}:${entry.target ?? ''}:${entry.timestamp}`;
+}
+
+export function hasSenderScopedEntryIdentity(
+  entries: InboxEntry[],
+  candidate: Pick<InboxEntry, 'id' | 'from'>,
+): boolean {
+  return entries.some((entry) => entry.id === candidate.id && entry.from === candidate.from);
 }

@@ -3,7 +3,7 @@ import yaml from 'js-yaml';
 import type { ASPStore } from './store.js';
 import type { InboxEntry } from '../models/inbox-entry.js';
 import { getInboxEntryCursor, isInboxEntry, validateInboxEntry } from '../models/inbox-entry.js';
-import { inboxEntryToInteraction, inboxEntryToMessage } from '../utils/inbox-entry.js';
+import { hasSenderScopedEntryIdentity, inboxEntryToInteraction, inboxEntryToMessage } from '../utils/inbox-entry.js';
 import { renderProfilePage } from '../utils/render-html.js';
 import { buildAccountIdentifier, buildWebFingerResponse, parseWebFingerResource } from '../utils/webfinger.js';
 import { fetchManifest } from '../utils/verify-identity.js';
@@ -226,6 +226,11 @@ export function createASPHandler(
         const valid = verifyPayload(buildInboxEntrySignaturePayload(parsed), parsed.signature!, publicKey);
         if (!valid) {
           jsonError(res, 400, 'Invalid inbox entry signature');
+          return;
+        }
+
+        if (hasSenderScopedEntryIdentity(inbox.received, parsed)) {
+          jsonError(res, 409, 'Duplicate inbox entry (already received)');
           return;
         }
 
