@@ -8,7 +8,6 @@ import { readManifest } from '../store/manifest-store.js';
 import { writeManifest } from '../store/manifest-store.js';
 import { writeFeed } from '../store/feed-store.js';
 import { writeFollowing } from '../store/following-store.js';
-import { writeInteractions } from '../store/interaction-store.js';
 import { writeNotifications } from '../store/notification-store.js';
 import { writeRelationships } from '../store/relationship-store.js';
 import { writeInbox } from '../store/inbox-store.js';
@@ -90,10 +89,9 @@ export async function initializeLocalIdentity(opts: InitializeIdentityOptions): 
   await writeManifest(manifest);
   await writeFeed([]);
   await writeFollowing([]);
-  await writeInteractions({ sent: [], received: [] });
-  await writeNotifications({ last_checked: new Date().toISOString(), new_posts: [], new_interactions: [] });
+  await writeNotifications({ last_checked: new Date().toISOString(), new_posts: [], new_entries: [] });
   await writeRelationships([]);
-  await writeInbox({ messages: [] });
+  await writeInbox({ sent: [], received: [] });
   await writeReputationRecords([]);
   await writeBehavior(behavior);
 

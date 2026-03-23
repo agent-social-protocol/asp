@@ -1,6 +1,7 @@
 import {
   generateKeyPairSync,
   sign,
+  verify,
   createPrivateKey,
   createPublicKey,
   diffieHellman,
@@ -64,6 +65,19 @@ export function signPayload(payload: string, privateKeyPem: string): string {
   const key = createPrivateKey(privateKeyPem);
   const signature = sign(null, Buffer.from(payload), key);
   return signature.toString('base64');
+}
+
+/**
+ * Verify a base64 Ed25519 signature against an ASP public key
+ * ("ed25519:<base64 SPKI DER>").
+ */
+export function verifyPayload(payload: string, signatureB64: string, publicKey: string): boolean {
+  if (!publicKey.startsWith('ed25519:')) {
+    throw new Error('Unsupported public key format');
+  }
+  const der = Buffer.from(publicKey.replace('ed25519:', ''), 'base64');
+  const key = createPublicKey({ key: der, format: 'der', type: 'spki' });
+  return verify(null, Buffer.from(payload), key, Buffer.from(signatureB64, 'base64'));
 }
 
 /**

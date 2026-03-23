@@ -1,11 +1,13 @@
-import { describe, expect, it, beforeEach, afterEach } from 'vitest';
+import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest';
 import http from 'node:http';
 import { createASPHandler } from '../handler.js';
 import { MemoryStore } from '../store.js';
 import { createDefaultManifest } from '../../models/manifest.js';
 import type { FeedEntry } from '../../models/feed-entry.js';
-import type { Message } from '../../models/message.js';
+import type { InboxEntry } from '../../models/inbox-entry.js';
 import type { Manifest } from '../../models/manifest.js';
+import { generateKeyPair, signPayload } from '../../utils/crypto.js';
+import { buildInboxEntrySignaturePayload } from '../../utils/inbox-entry.js';
 
 function makeRequest(
   url: string,
@@ -43,10 +45,12 @@ function makeRequest(
 describe('e2e: agent discovery workflow', () => {
   let server: http.Server;
   let port: number;
-  let receivedMessages: Message[];
+  let receivedEntries: InboxEntry[];
+  let senderKeyPair: ReturnType<typeof generateKeyPair>;
 
   beforeEach(async () => {
-    receivedMessages = [];
+    receivedEntries = [];
+    senderKeyPair = generateKeyPair();
     const store = new MemoryStore();
 
     // Service agent with skills
@@ -95,8 +99,24 @@ describe('e2e: agent discovery workflow', () => {
     ];
     await store.set('feed', entries);
 
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      headers: {
+        get: (name: string) => name.toLowerCase() === 'content-type' ? 'application/json' : null,
+      },
+      text: () => Promise.resolve(JSON.stringify(createDefaultManifest({
+        id: 'https://alice.letus.social',
+        type: 'agent',
+        name: 'Alice',
+        handle: '@alice',
+        bio: 'Requester',
+        languages: ['en'],
+        publicKey: senderKeyPair.publicKey,
+      }))),
+    }));
+
     const handler = createASPHandler(store, {
-      onMessage: (msg) => { receivedMessages.push(msg); },
+      onMessage: (entry) => { receivedEntries.push(entry); },
     });
     server = http.createServer(handler);
     await new Promise<void>((resolve) => server.listen(0, resolve));
@@ -105,6 +125,8 @@ describe('e2e: agent discovery workflow', () => {
 
   afterEach(() => {
     server?.close();
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
   });
 
   it('complete flow: discover → inspect → feed → filter intent → contact', async () => {
@@ -134,18 +156,23 @@ describe('e2e: agent discovery workflow', () => {
     expect(intentEntries[0].metadata).toMatchObject({ action: 'find', scope: 'open' });
 
     // Step 4: Send a service-request message
-    const serviceRequest: Message = {
+    const serviceRequest: InboxEntry = {
       id: 'msg-001',
       from: 'https://alice.letus.social',
       to: 'https://hexagramreply.letus.social',
+      kind: 'message',
+      type: 'service-request',
       timestamp: new Date().toISOString(),
-      intent: 'service-request',
       content: {
         text: 'I would like an I Ching reading about my career transition.',
         data: { service: 'hexagram', params: { question: 'Should I change careers?' } },
       },
       initiated_by: 'human',
     };
+    serviceRequest.signature = signPayload(
+      buildInboxEntrySignaturePayload(serviceRequest),
+      senderKeyPair.privateKey,
+    );
     const { status: msgStatus, body: msgBody } = await makeRequest(`${base}/asp/inbox`, {
       method: 'POST',
       body: serviceRequest,
@@ -154,23 +181,33 @@ describe('e2e: agent discovery workflow', () => {
     expect(msgBody).toEqual({ status: 'received' });
 
     // Step 5: Verify service agent received the message
-    expect(receivedMessages).toHaveLength(1);
-    expect(receivedMessages[0].intent).toBe('service-request');
-    expect(receivedMessages[0].content.data).toMatchObject({ service: 'hexagram' });
+    expect(receivedEntries).toHaveLength(1);
+    expect(receivedEntries[0].type).toBe('service-request');
+    expect(receivedEntries[0].content?.data).toMatchObject({ service: 'hexagram' });
   });
 
   it('flow: follow interaction → feed consumption', async () => {
     const base = `http://localhost:${port}`;
 
     // Step 1: Send follow interaction
-    const { status: followStatus } = await makeRequest(`${base}/asp/interactions`, {
+    const followEntry: InboxEntry = {
+      id: 'follow-001',
+      kind: 'interaction',
+      type: 'follow',
+      to: 'https://hexagramreply.letus.social',
+      from: 'https://alice.letus.social',
+      target: 'https://hexagramreply.letus.social',
+      timestamp: new Date().toISOString(),
+      signature: '',
+    };
+    followEntry.signature = signPayload(
+      buildInboxEntrySignaturePayload(followEntry),
+      senderKeyPair.privateKey,
+    );
+
+    const { status: followStatus } = await makeRequest(`${base}/asp/inbox`, {
       method: 'POST',
-      body: {
-        action: 'follow',
-        to: 'https://hexagramreply.letus.social',
-        from: 'https://alice.letus.social',
-        timestamp: new Date().toISOString(),
-      },
+      body: followEntry,
     });
     expect(followStatus).toBe(200);
 

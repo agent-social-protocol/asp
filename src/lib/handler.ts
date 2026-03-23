@@ -1,12 +1,14 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import yaml from 'js-yaml';
 import type { ASPStore } from './store.js';
-import type { Interaction } from '../models/interaction.js';
-import type { Message } from '../models/message.js';
-import { isInteraction } from '../models/interaction.js';
-import { isMessage } from '../models/message.js';
+import type { InboxEntry } from '../models/inbox-entry.js';
+import { getInboxEntryCursor, isInboxEntry, validateInboxEntry } from '../models/inbox-entry.js';
+import { inboxEntryToInteraction, inboxEntryToMessage } from '../utils/inbox-entry.js';
 import { renderProfilePage } from '../utils/render-html.js';
 import { buildAccountIdentifier, buildWebFingerResponse, parseWebFingerResource } from '../utils/webfinger.js';
+import { fetchManifest } from '../utils/verify-identity.js';
+import { buildInboxEntrySignaturePayload } from '../utils/inbox-entry.js';
+import { verifyPayload } from '../utils/crypto.js';
 
 const DEFAULT_MAX_BODY_SIZE = 65536; // 64 KB
 const DEFAULT_FEED_LIMIT = 50;
@@ -55,8 +57,9 @@ function jrdResponse(res: ServerResponse, status: number, data: unknown): void {
 }
 
 export interface ASPHandlerCallbacks {
-  onMessage?: (msg: Message) => void;
-  onInteraction?: (interaction: Interaction) => void;
+  onEntry?: (entry: InboxEntry) => void;
+  onMessage?: (msg: InboxEntry) => void;
+  onInteraction?: (interaction: InboxEntry) => void;
 }
 
 /**
@@ -189,36 +192,7 @@ export function createASPHandler(
         return;
       }
 
-      // POST /asp/interactions — Accept incoming interactions
-      if (req.method === 'POST' && url.pathname === '/asp/interactions') {
-        const body = await readBody(req, maxBodySize);
-        const contentType = req.headers['content-type'] || '';
-
-        let parsed: unknown;
-        try {
-          parsed = parseBody(body, contentType);
-        } catch {
-          jsonError(res, 400, 'Could not parse request body');
-          return;
-        }
-
-        if (!isInteraction(parsed)) {
-          jsonError(res, 400, 'Invalid interaction format');
-          return;
-        }
-
-        const interactions = await store.get('interactions');
-        interactions.received.push(parsed);
-        await store.set('interactions', interactions);
-
-        callbacks?.onInteraction?.(parsed);
-
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ status: 'received' }));
-        return;
-      }
-
-      // POST /asp/inbox — Receive messages
+      // POST /asp/inbox — Receive unified inbox entries
       if (req.method === 'POST' && url.pathname === '/asp/inbox') {
         const body = await readBody(req, maxBodySize);
         const contentType = req.headers['content-type'] || '';
@@ -231,19 +205,77 @@ export function createASPHandler(
           return;
         }
 
-        if (!isMessage(parsed)) {
-          jsonError(res, 400, 'Invalid message format');
+        if (!isInboxEntry(parsed)) {
+          jsonError(res, 400, 'Invalid inbox entry format');
           return;
         }
 
         const inbox = await store.get('inbox');
-        inbox.push(parsed);
+        const validationError = validateInboxEntry(parsed, { requireSignature: true });
+        if (validationError) {
+          jsonError(res, 400, validationError);
+          return;
+        }
+
+        const manifest = await fetchManifest(parsed.from);
+        const publicKey = manifest?.verification?.public_key;
+        if (!publicKey) {
+          jsonError(res, 400, 'Could not resolve sender public key');
+          return;
+        }
+        const valid = verifyPayload(buildInboxEntrySignaturePayload(parsed), parsed.signature!, publicKey);
+        if (!valid) {
+          jsonError(res, 400, 'Invalid inbox entry signature');
+          return;
+        }
+
+        inbox.received.push({
+          ...parsed,
+          received_at: new Date().toISOString(),
+        });
         await store.set('inbox', inbox);
 
-        callbacks?.onMessage?.(parsed);
+        callbacks?.onEntry?.(parsed);
+        if (parsed.kind === 'message') {
+          callbacks?.onMessage?.(parsed);
+        } else {
+          callbacks?.onInteraction?.(parsed);
+        }
 
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ status: 'received' }));
+        return;
+      }
+
+      if (req.method === 'GET' && url.pathname === '/asp/inbox') {
+        const inbox = await store.get('inbox');
+        const direction = url.searchParams.get('direction') === 'sent' ? 'sent' : 'received';
+        let entries = [...inbox[direction]];
+
+        const cursor = url.searchParams.get('cursor');
+        if (cursor) {
+          entries = entries.filter((entry) => getInboxEntryCursor(entry) > cursor);
+        }
+
+        const thread = url.searchParams.get('thread');
+        if (thread) {
+          entries = entries.filter((entry) => entry.thread_id === thread);
+        }
+
+        const kind = url.searchParams.get('kind');
+        if (kind) {
+          entries = entries.filter((entry) => entry.kind === kind);
+        }
+
+        const type = url.searchParams.get('type');
+        if (type) {
+          entries = entries.filter((entry) => entry.type === type);
+        }
+
+        entries.sort((a, b) => getInboxEntryCursor(b).localeCompare(getInboxEntryCursor(a)));
+        const nextCursor = entries.length > 0 ? getInboxEntryCursor(entries[entries.length - 1]) : null;
+
+        respond(res, 200, { entries, next_cursor: nextCursor }, wantsJson);
         return;
       }
 

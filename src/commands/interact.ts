@@ -9,6 +9,7 @@ import { signPayload } from '../utils/crypto.js';
 import { output } from '../utils/output.js';
 import { resolveEndpoint, parsePostUrl } from '../identity/resolve-target.js';
 import type { Interaction } from '../models/interaction.js';
+import { buildInboxEntrySignaturePayload, interactionToInboxEntry } from '../utils/inbox-entry.js';
 
 export interface InteractionResult {
   status: 'sent' | 'saved_locally' | 'error';
@@ -25,8 +26,10 @@ export async function doInteraction(action: string, target: string, content: str
   const manifest = await readManifest();
   const from = manifest?.entity.id;
   const timestamp = new Date().toISOString();
+  const entryId = crypto.randomUUID();
 
   const interaction: Interaction = {
+    id: entryId,
     action,
     to: target,
     target: resourceTarget || target,
@@ -40,7 +43,7 @@ export async function doInteraction(action: string, target: string, content: str
   const { privateKeyPath } = getStorePaths();
   if (!isLocal && from && existsSync(privateKeyPath)) {
     const privateKeyPem = await readFile(privateKeyPath, 'utf-8');
-    const payload = `${from}:${target}:${action}:${resourceTarget ?? ''}:${timestamp}`;
+    const payload = buildInboxEntrySignaturePayload(interactionToInboxEntry(interaction));
     interaction.signature = signPayload(payload, privateKeyPem);
   }
 

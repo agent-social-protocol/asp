@@ -7,6 +7,7 @@ import { MemoryStore } from './store.js';
 import { createASPHandler } from './handler.js';
 import type { Manifest, Relationship } from '../models/manifest.js';
 import type { FeedEntry } from '../models/feed-entry.js';
+import type { InboxEntry } from '../models/inbox-entry.js';
 import type { Message } from '../models/message.js';
 import type { Interaction } from '../models/interaction.js';
 import type { Following } from '../models/following.js';
@@ -18,8 +19,10 @@ import { fetchManifest, verifyEntity, verifyRepresentation } from '../utils/veri
 import { fetchFeed, type RemoteFeed } from '../utils/fetch-feed.js';
 import { computeTrust } from '../reputation/calculator.js';
 import { signPayload } from '../utils/crypto.js';
+import { buildInboxEntrySignaturePayload, inboxEntryToInteraction, inboxEntryToMessage, interactionToInboxEntry, messageToInboxEntry } from '../utils/inbox-entry.js';
 
 export interface ASPEventMap {
+  entry: [InboxEntry];
   message: [Message];
   interaction: [Interaction];
 }
@@ -39,8 +42,15 @@ export class ASPNode extends EventEmitter<ASPEventMap> {
     void this.store.set('manifest', opts.manifest);
 
     this._handler = createASPHandler(this.store, {
-      onMessage: (msg) => this.emit('message', msg),
-      onInteraction: (interaction) => this.emit('interaction', interaction),
+      onEntry: (entry) => this.emit('entry', entry),
+      onMessage: (entry) => {
+        const message = inboxEntryToMessage(entry);
+        if (message) this.emit('message', message);
+      },
+      onInteraction: (entry) => {
+        const interaction = inboxEntryToInteraction(entry);
+        if (interaction) this.emit('interaction', interaction);
+      },
     }, { feedLimit: opts.feedLimit });
   }
 
@@ -84,13 +94,16 @@ export class ASPNode extends EventEmitter<ASPEventMap> {
 
     // Sign message metadata (same pattern as sendInteraction)
     if (this._privateKey) {
-      const sigPayload = `${msg.id}:${from}:${targetUrl}:${msg.intent}:${msg.timestamp}`;
+      const sigPayload = buildInboxEntrySignaturePayload(messageToInboxEntry(msg));
       msg.signature = signPayload(sigPayload, this._privateKey);
     }
 
     // Store plaintext locally
     const inbox = await this.store.get('inbox');
-    inbox.push(msg);
+    inbox.sent.push({
+      ...messageToInboxEntry(msg),
+      received_at: new Date().toISOString(),
+    });
     await this.store.set('inbox', inbox);
 
     // Encrypt if recipient supports it
@@ -152,6 +165,7 @@ export class ASPNode extends EventEmitter<ASPEventMap> {
 
     const timestamp = new Date().toISOString();
     const interaction: Interaction = {
+      id: randomUUID(),
       action,
       from,
       to: targetUrl,
@@ -162,14 +176,17 @@ export class ASPNode extends EventEmitter<ASPEventMap> {
 
     // Auto-sign if private key available
     if (this._privateKey) {
-      const payload = `${from}:${targetUrl}:${action}:${opts?.target ?? ''}:${timestamp}`;
+      const payload = buildInboxEntrySignaturePayload(interactionToInboxEntry(interaction));
       interaction.signature = signPayload(payload, this._privateKey);
     }
 
     // Store locally
-    const interactions = await this.store.get('interactions');
-    interactions.sent.push(interaction);
-    await this.store.set('interactions', interactions);
+    const inbox = await this.store.get('inbox');
+    inbox.sent.push({
+      ...interactionToInboxEntry(interaction),
+      received_at: new Date().toISOString(),
+    });
+    await this.store.set('inbox', inbox);
 
     // Send to remote
     return sendInteraction(targetUrl, interaction);
@@ -246,8 +263,9 @@ export class ASPNode extends EventEmitter<ASPEventMap> {
     return this.store.get('feed');
   }
 
-  async getInbox(): Promise<Message[]> {
-    return this.store.get('inbox');
+  async getInbox(): Promise<InboxEntry[]> {
+    const inbox = await this.store.get('inbox');
+    return inbox.received;
   }
 
   async getFollowing(): Promise<Following[]> {

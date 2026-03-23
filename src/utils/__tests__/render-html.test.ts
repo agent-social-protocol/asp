@@ -17,12 +17,11 @@ function makeManifest(overrides: Partial<Manifest> = {}): Manifest {
       created_at: '2025-01-01T00:00:00Z',
     },
     relationships: [],
-    capabilities: ['feed', 'interactions', 'inbox'],
+    capabilities: ['feed', 'inbox'],
     skills: ['code-review', 'summarization'],
     endpoints: {
       feed: '/asp/feed',
       inbox: '/asp/inbox',
-      interactions: '/asp/interactions',
     },
     verification: {
       public_key: 'test-key-123',
@@ -235,7 +234,6 @@ describe('renderProfilePage', () => {
   it('renders capabilities', () => {
     const html = renderProfilePage(makeManifest(), []);
     expect(html).toContain('feed');
-    expect(html).toContain('interactions');
     expect(html).toContain('inbox');
   });
 });

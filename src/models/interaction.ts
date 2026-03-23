@@ -1,6 +1,7 @@
 import * as z from 'zod/v4';
 
 export const InteractionSchema = z.object({
+  id: z.string().optional(),
   action: z.string(),
   from: z.string().optional(),
   to: z.string().optional(),

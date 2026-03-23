@@ -15,12 +15,11 @@ function makeHostedManifest(): Manifest {
       created_at: '2026-03-01T00:00:00.000Z',
     },
     relationships: [],
-    capabilities: ['feed', 'inbox', 'interactions'],
+    capabilities: ['feed', 'inbox'],
     skills: ['networking'],
     endpoints: {
       feed: '/asp/feed',
       inbox: '/asp/inbox',
-      interactions: '/asp/interactions',
     },
     verification: {
       public_key: 'ed25519:test',

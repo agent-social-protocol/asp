@@ -11,6 +11,7 @@ export type { ASPHandlerCallbacks, ASPHandlerOptions } from './lib/handler.js';
 
 // Re-export models
 export type { Manifest, Entity, Relationship, EntityType, Verification, Skill } from './models/manifest.js';
+export type { InboxEntry, InboxEntryKind, InboxEntryContent } from './models/inbox-entry.js';
 export type { Message, MessageAttachment, MessageInitiator } from './models/message.js';
 export type { Interaction } from './models/interaction.js';
 export type { FeedEntry } from './models/feed-entry.js';
@@ -21,6 +22,7 @@ export type { BehaviorConfig } from './config/behavior.js';
 
 // Re-export model utilities
 export { isManifest, createDefaultManifest } from './models/manifest.js';
+export { isInboxEntry, isMessageEntry, isInteractionEntry, validateInboxEntry } from './models/inbox-entry.js';
 export { isMessage } from './models/message.js';
 export { isInteraction } from './models/interaction.js';
 
@@ -30,6 +32,7 @@ export { computeTrust } from './reputation/calculator.js';
 export { fetchManifest, verifyEntity, verifyRepresentation } from './utils/verify-identity.js';
 export { fetchFeed } from './utils/fetch-feed.js';
 export type { RemoteFeed } from './utils/fetch-feed.js';
+export { sendEntry } from './utils/send-entry.js';
 export { sendMessage } from './utils/send-message.js';
 export { sendInteraction } from './utils/send-interaction.js';
 export { generateKeyPair, signPayload, generateEncryptionKeyPair, eciesEncrypt, eciesDecrypt } from './utils/crypto.js';

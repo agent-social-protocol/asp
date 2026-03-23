@@ -3,12 +3,15 @@ import { randomUUID } from 'node:crypto';
 import type { Manifest } from '../models/manifest.js';
 import type { Message } from '../models/message.js';
 import type { Interaction } from '../models/interaction.js';
+import type { InboxEntry } from '../models/inbox-entry.js';
 import type {
   ASPClientOptions,
   ASPClientTransport,
   ASPClientRuntime,
   ASPSearchOptions,
   ASPSearchResult,
+  ASPInboxReadOptions,
+  ASPInboxReadResult,
 } from './types.js';
 import { sendMessage } from '../utils/send-message.js';
 import { sendInteraction } from '../utils/send-interaction.js';
@@ -21,6 +24,13 @@ import {
 import { fetchManifest } from '../utils/verify-identity.js';
 import { fetchFeed, type RemoteFeed } from '../utils/fetch-feed.js';
 import { signPayload } from '../utils/crypto.js';
+import {
+  buildInboxEntrySignaturePayload,
+  inboxEntryToInteraction,
+  inboxEntryToMessage,
+  interactionToInboxEntry,
+  messageToInboxEntry,
+} from '../utils/inbox-entry.js';
 import { FileIdentityProvider } from './identity.js';
 import { ProtocolASPTransport } from './protocol-transport.js';
 import { isHostedEndpoint } from '../config/hosted.js';
@@ -29,6 +39,7 @@ import { HostedASPTransport } from '../hosted/transport.js';
 const DEFAULT_POLL_INTERVAL_MS = 60_000; // 1 minute
 
 export interface ASPClientEventMap {
+  entry: [InboxEntry];
   message: [Message];
   interaction: [Interaction];
   error: [Error];
@@ -46,8 +57,8 @@ export class ASPClient extends EventEmitter<ASPClientEventMap> {
   // Polling state
   private _pollTimer: ReturnType<typeof setInterval> | null = null;
   private _pollIntervalMs: number;
-  private _lastMessageTs: string | null = null;
-  private _lastInteractionTs: string | null = null;
+  private _lastInboxCursor: string | null = null;
+  private _lastInboxSince: string | null = null;
 
   constructor(opts: ASPClientOptions) {
     super();
@@ -97,8 +108,8 @@ export class ASPClient extends EventEmitter<ASPClientEventMap> {
     if (this._pollTimer) return; // already connected
 
     // Start from now — don't replay history
-    this._lastMessageTs = new Date().toISOString();
-    this._lastInteractionTs = new Date().toISOString();
+    this._lastInboxSince = new Date().toISOString();
+    this._lastInboxCursor = null;
 
     this._pollTimer = setInterval(() => void this._poll(), this._pollIntervalMs);
     this.emit('connected');
@@ -109,8 +120,8 @@ export class ASPClient extends EventEmitter<ASPClientEventMap> {
     if (!this._pollTimer) return;
     clearInterval(this._pollTimer);
     this._pollTimer = null;
-    this._lastMessageTs = null;
-    this._lastInteractionTs = null;
+    this._lastInboxCursor = null;
+    this._lastInboxSince = null;
     this.emit('disconnected');
   }
 
@@ -120,39 +131,51 @@ export class ASPClient extends EventEmitter<ASPClientEventMap> {
   }
 
   /**
-   * Internal polling tick. Fetches new messages and interactions since last poll,
-   * auto-decrypts encrypted messages, and emits events in chronological order.
+   * Internal polling tick. Fetches new inbox entries since last poll and emits
+   * entry plus compatibility message/interaction events in chronological order.
    */
   private async _poll(): Promise<void> {
     try {
-      // Poll inbox
-      const messages = await this.getInbox({ since: this._lastMessageTs ?? undefined });
-      // Hub returns DESC order — reverse to emit chronologically
-      const chronMessages = [...messages].reverse();
-      for (const msg of chronMessages) {
-        if (this._lastMessageTs && new Date(msg.timestamp).getTime() <= new Date(this._lastMessageTs).getTime()) continue;
-        // Auto-decrypt if encrypted and we have the key
-        let emitMsg = msg;
-        if (this._encryptionKey && isEncryptedMessage(msg)) {
-          try {
-            emitMsg = decryptMessageContent(msg, this._encryptionKey);
-          } catch {
-            // Decryption failed (wrong key, corrupted data) — emit raw encrypted message.
-            // Consumer can detect this via isEncryptedMessage(msg) and handle accordingly.
-            // Design choice: never drop data silently. Dropping would hide delivery issues.
+      const { entries, nextCursor } = await this._transport.getInbox(this._runtime(), {
+        ...(this._lastInboxCursor ? { cursor: this._lastInboxCursor } : {}),
+        ...(!this._lastInboxCursor && this._lastInboxSince ? { since: this._lastInboxSince } : {}),
+      });
+
+      for (const entry of entries) {
+        if (!this._lastInboxCursor && this._lastInboxSince) {
+          const baseline = new Date(this._lastInboxSince).getTime();
+          const observedAt = new Date(entry.received_at ?? entry.timestamp).getTime();
+          if (observedAt <= baseline) {
+            continue;
           }
         }
-        this.emit('message', emitMsg);
-        this._lastMessageTs = msg.timestamp;
+
+        this.emit('entry', entry);
+
+        const maybeMessage = inboxEntryToMessage(entry);
+        if (maybeMessage) {
+          let emitMsg = maybeMessage;
+          if (this._encryptionKey && isEncryptedMessage(maybeMessage)) {
+            try {
+              emitMsg = decryptMessageContent(maybeMessage, this._encryptionKey);
+            } catch {
+              // Preserve encrypted payloads on decryption failure instead of silently dropping them.
+            }
+          }
+          this.emit('message', emitMsg);
+        }
+
+        const maybeInteraction = inboxEntryToInteraction(entry);
+        if (maybeInteraction) {
+          this.emit('interaction', maybeInteraction);
+        }
       }
 
-      // Poll interactions
-      const interactions = await this.getInteractions({ since: this._lastInteractionTs ?? undefined });
-      const chronInteractions = [...interactions].reverse();
-      for (const interaction of chronInteractions) {
-        if (this._lastInteractionTs && new Date(interaction.timestamp).getTime() <= new Date(this._lastInteractionTs).getTime()) continue;
-        this.emit('interaction', interaction);
-        this._lastInteractionTs = interaction.timestamp;
+      if (nextCursor) {
+        this._lastInboxCursor = nextCursor;
+        this._lastInboxSince = null;
+      } else if (!this._lastInboxCursor && this._lastInboxSince) {
+        this._lastInboxSince = new Date().toISOString();
       }
     } catch (err) {
       // Polling failure — don't disconnect, emit error (if listened) and retry on next tick.
@@ -191,7 +214,7 @@ export class ASPClient extends EventEmitter<ASPClientEventMap> {
 
     // Sign message metadata (before encryption — signature covers cleartext metadata)
     if (this._privateKey) {
-      const sigPayload = `${msg.id}:${from}:${targetUrl}:${msg.intent}:${msg.timestamp}`;
+      const sigPayload = buildInboxEntrySignaturePayload(messageToInboxEntry(msg));
       msg.signature = signPayload(sigPayload, this._privateKey);
     }
 
@@ -222,8 +245,10 @@ export class ASPClient extends EventEmitter<ASPClientEventMap> {
   }): Promise<{ ok: boolean; error?: string }> {
     const from = this._manifest.entity.id;
     const timestamp = new Date().toISOString();
+    const entryId = randomUUID();
 
     const interaction: Interaction = {
+      id: entryId,
       action,
       from,
       to: targetUrl,
@@ -233,7 +258,15 @@ export class ASPClient extends EventEmitter<ASPClientEventMap> {
     };
 
     if (this._privateKey) {
-      const payload = `${from}:${targetUrl}:${action}:${opts?.target ?? ''}:${timestamp}`;
+      const payload = buildInboxEntrySignaturePayload(interactionToInboxEntry({
+        id: entryId,
+        action,
+        from,
+        to: targetUrl,
+        timestamp,
+        ...(opts?.target && { target: opts.target }),
+        ...(opts?.content && { content: opts.content }),
+      }));
       interaction.signature = signPayload(payload, this._privateKey);
     }
 
@@ -260,12 +293,27 @@ export class ASPClient extends EventEmitter<ASPClientEventMap> {
 
   // --- Authenticated reads (to own node) ---
 
-  async getInbox(opts?: { since?: string; thread?: string }): Promise<Message[]> {
+  async getInboxPage(opts?: ASPInboxReadOptions): Promise<ASPInboxReadResult> {
     return this._transport.getInbox(this._runtime(), opts);
   }
 
-  async getInteractions(opts?: { since?: string; action?: string }): Promise<Interaction[]> {
-    return this._transport.getInteractions(this._runtime(), opts);
+  async getInbox(opts?: ASPInboxReadOptions): Promise<InboxEntry[]> {
+    const { entries } = await this.getInboxPage(opts);
+    return entries;
+  }
+
+  async getMessages(opts?: Omit<ASPInboxReadOptions, 'kind'>): Promise<Message[]> {
+    const { entries } = await this._transport.getInbox(this._runtime(), { ...opts, kind: 'message' });
+    return entries.map(inboxEntryToMessage).filter((entry): entry is Message => !!entry);
+  }
+
+  async getInteractions(opts?: Omit<ASPInboxReadOptions, 'kind' | 'type'> & { type?: string }): Promise<Interaction[]> {
+    const { entries } = await this._transport.getInbox(this._runtime(), {
+      ...opts,
+      kind: 'interaction',
+      ...(opts?.type ? { type: opts.type } : {}),
+    });
+    return entries.map(inboxEntryToInteraction).filter((entry): entry is Interaction => !!entry);
   }
 
   async publish(opts: {

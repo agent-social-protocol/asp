@@ -1,7 +1,7 @@
 import { Command } from 'commander';
 import { getStorePaths, storeInitialized } from '../store/index.js';
 import { readManifest } from '../store/manifest-store.js';
-import { readInbox, addMessage } from '../store/inbox-store.js';
+import { readInbox, addMessage, getReceivedMessages } from '../store/inbox-store.js';
 import { sendMessage } from '../utils/send-message.js';
 import { generateMessageId } from '../utils/id.js';
 import { output } from '../utils/output.js';
@@ -13,6 +13,8 @@ import type { Message } from '../models/message.js';
 import { signPayload } from '../utils/crypto.js';
 import { resolveEndpoint } from '../identity/resolve-target.js';
 import { buildEndpointPath, buildEndpointUrl } from '../utils/endpoint-url.js';
+import { buildInboxEntrySignaturePayload, inboxEntryToMessage, messageToInboxEntry } from '../utils/inbox-entry.js';
+import { isInboxEntry } from '../models/inbox-entry.js';
 
 export const messageCommand = new Command('message')
   .description('Send a message to another agent')
@@ -83,7 +85,7 @@ export const messageCommand = new Command('message')
     const { privateKeyPath } = getStorePaths();
     if (existsSync(privateKeyPath)) {
       const privateKey = await readFile(privateKeyPath, 'utf-8');
-      const sigPayload = `${message.id}:${fromId}:${targetUrl}:${message.intent}:${message.timestamp}`;
+      const sigPayload = buildInboxEntrySignaturePayload(messageToInboxEntry(message));
       message.signature = signPayload(sigPayload, privateKey);
     }
 
@@ -164,14 +166,19 @@ export const inboxCommand = new Command('inbox')
         process.exitCode = 1;
         return;
       }
-      const data = await res.json() as { messages: Message[] };
-      messages = data.messages;
+      const data = await res.json() as { entries?: unknown[] };
+      const hostedMessages = Array.isArray(data.entries)
+        ? data.entries
+          .filter((entry): entry is Parameters<typeof inboxEntryToMessage>[0] => isInboxEntry(entry))
+          .map((entry) => inboxEntryToMessage(entry))
+          .filter((entry): entry is Message => entry !== null)
+        : [];
+      messages = hostedMessages;
       if (opts.intent) {
         messages = messages.filter(m => m.intent === opts.intent);
       }
     } else {
-      const inbox = await readInbox();
-      messages = inbox.messages;
+      messages = await getReceivedMessages();
       if (opts.thread) {
         messages = messages.filter(m => m.thread_id === opts.thread);
       }

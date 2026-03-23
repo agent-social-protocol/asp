@@ -12,6 +12,7 @@ import { createDefaultManifest } from '../../models/manifest.js';
 import { generateKeyPair, generateEncryptionKeyPair } from '../../utils/crypto.js';
 import type { ASPClientTransport } from '../types.js';
 import { HostedASPTransport } from '../../hosted/transport.js';
+import { messageToInboxEntry } from '../../utils/inbox-entry.js';
 
 function makeTempIdentity(): {
   dir: string;
@@ -113,8 +114,7 @@ describe('ASPClient', () => {
     it('uses a custom transport when provided', async () => {
       const transport: ASPClientTransport = {
         searchIndex: vi.fn().mockResolvedValue([{ endpoint: 'https://bob.example', name: 'Bob' }]),
-        getInbox: vi.fn().mockResolvedValue([]),
-        getInteractions: vi.fn().mockResolvedValue([]),
+        getInbox: vi.fn().mockResolvedValue({ entries: [], nextCursor: null }),
         publish: vi.fn().mockResolvedValue({ ok: true, id: 'entry-1' }),
       };
       const client = new ASPClient({ identityDir: tmpDir, transport });
@@ -149,7 +149,7 @@ describe('ASPClient', () => {
     it('uses endpoint auth by default for hosted identities', async () => {
       const fetchMock = vi.fn().mockResolvedValue({
         ok: true,
-        json: () => Promise.resolve({ messages: [] }),
+        json: () => Promise.resolve({ entries: [] }),
       });
       vi.stubGlobal('fetch', fetchMock);
 
@@ -209,28 +209,23 @@ describe('ASPClient', () => {
       const received: Message[] = [];
       client.on('message', (msg) => received.push(msg));
 
-      // Mock fetch: getInbox returns one new message, getInteractions returns empty
+      // Mock fetch: getInbox returns one new message entry
       const mockFetch = vi.fn().mockImplementation((url: string) => {
         if (String(url).includes('/asp/inbox')) {
           return Promise.resolve({
             ok: true,
             json: () => Promise.resolve({
-              messages: [{
+              entries: [{
                 id: 'msg-1',
                 from: 'https://bob.asp.social',
                 to: 'https://alice.asp.social',
+                kind: 'message',
+                type: 'chat',
                 timestamp: new Date(Date.now() + 10_000).toISOString(), // 10s in future = after connect baseline
-                intent: 'chat',
                 content: { text: 'Hello Alice' },
                 initiated_by: 'agent',
               }],
             }),
-          });
-        }
-        if (String(url).includes('/asp/interactions')) {
-          return Promise.resolve({
-            ok: true,
-            json: () => Promise.resolve({ interactions: [] }),
           });
         }
         return Promise.resolve({ ok: false });
@@ -258,17 +253,13 @@ describe('ASPClient', () => {
         if (String(url).includes('/asp/inbox')) {
           return Promise.resolve({
             ok: true,
-            json: () => Promise.resolve({ messages: [] }),
-          });
-        }
-        if (String(url).includes('/asp/interactions')) {
-          return Promise.resolve({
-            ok: true,
             json: () => Promise.resolve({
-              interactions: [{
+              entries: [{
                 id: 'interaction-1',
-                action: 'like',
+                kind: 'interaction',
+                type: 'like',
                 from: 'https://bob.asp.social',
+                to: 'https://alice.asp.social',
                 target: 'https://alice.asp.social/asp/feed#post-1',
                 timestamp: new Date(Date.now() + 10_000).toISOString(),
               }],
@@ -302,22 +293,17 @@ describe('ASPClient', () => {
           return Promise.resolve({
             ok: true,
             json: () => Promise.resolve({
-              messages: [{
+              entries: [{
                 id: 'old-msg',
                 from: 'https://bob.asp.social',
                 to: 'https://alice.asp.social',
+                kind: 'message',
+                type: 'chat',
                 timestamp: oldTimestamp, // before connect baseline
-                intent: 'chat',
                 content: { text: 'Old message' },
                 initiated_by: 'agent',
               }],
             }),
-          });
-        }
-        if (String(url).includes('/asp/interactions')) {
-          return Promise.resolve({
-            ok: true,
-            json: () => Promise.resolve({ interactions: [] }),
           });
         }
         return Promise.resolve({ ok: false });
@@ -387,13 +373,9 @@ describe('ASPClient', () => {
         if (String(url).includes('/asp/inbox')) {
           return Promise.resolve({
             ok: true,
-            json: () => Promise.resolve({ messages: [encryptedMsg] }),
-          });
-        }
-        if (String(url).includes('/asp/interactions')) {
-          return Promise.resolve({
-            ok: true,
-            json: () => Promise.resolve({ interactions: [] }),
+            json: () => Promise.resolve({
+              entries: [messageToInboxEntry(encryptedMsg)],
+            }),
           });
         }
         return Promise.resolve({ ok: false });
@@ -424,22 +406,17 @@ describe('ASPClient', () => {
           return Promise.resolve({
             ok: true,
             json: () => Promise.resolve({
-              messages: [{
+              entries: [{
                 id: `msg-${callCount}`,
                 from: 'https://bob.asp.social',
                 to: 'https://alice.asp.social',
+                kind: 'message',
+                type: 'chat',
                 timestamp: new Date(Date.now() + callCount * 1000).toISOString(),
-                intent: 'chat',
                 content: { text: `Message ${callCount}` },
                 initiated_by: 'agent',
               }],
             }),
-          });
-        }
-        if (String(url).includes('/asp/interactions')) {
-          return Promise.resolve({
-            ok: true,
-            json: () => Promise.resolve({ interactions: [] }),
           });
         }
         return Promise.resolve({ ok: false });
@@ -546,7 +523,7 @@ describe('ASPClient', () => {
       });
       const mockFetch = vi.fn().mockResolvedValue({
         ok: true,
-        json: () => Promise.resolve({ messages: [] }),
+        json: () => Promise.resolve({ entries: [] }),
       });
       vi.stubGlobal('fetch', mockFetch);
 

@@ -1,7 +1,6 @@
 import type { Manifest, Relationship } from '../models/manifest.js';
 import type { FeedEntry } from '../models/feed-entry.js';
-import type { Message } from '../models/message.js';
-import type { Interaction } from '../models/interaction.js';
+import type { InboxEntry } from '../models/inbox-entry.js';
 import type { Following } from '../models/following.js';
 import type { ReputationRecord } from '../reputation/models.js';
 import type { BehaviorConfig } from '../config/behavior.js';
@@ -9,8 +8,7 @@ import type { BehaviorConfig } from '../config/behavior.js';
 export interface StoreData {
   manifest: Manifest | null;
   feed: FeedEntry[];
-  inbox: Message[];
-  interactions: { sent: Interaction[]; received: Interaction[] };
+  inbox: { sent: InboxEntry[]; received: InboxEntry[] };
   following: Following[];
   relationships: Relationship[];
   reputation: ReputationRecord[];
@@ -29,8 +27,7 @@ export class MemoryStore implements ASPStore {
   private data: StoreData = {
     manifest: null,
     feed: [],
-    inbox: [],
-    interactions: { sent: [], received: [] },
+    inbox: { sent: [], received: [] },
     following: [],
     relationships: [],
     reputation: [],
@@ -61,12 +58,7 @@ export class FileStore implements ASPStore {
       }
       case 'inbox': {
         const { readInbox } = await import('../store/inbox-store.js');
-        const data = await readInbox();
-        return data.messages as StoreData[K];
-      }
-      case 'interactions': {
-        const { readInteractions } = await import('../store/interaction-store.js');
-        return await readInteractions() as StoreData[K];
+        return await readInbox() as StoreData[K];
       }
       case 'following': {
         const { readFollowing } = await import('../store/following-store.js');
@@ -103,12 +95,7 @@ export class FileStore implements ASPStore {
       }
       case 'inbox': {
         const { writeInbox } = await import('../store/inbox-store.js');
-        await writeInbox({ messages: value as Message[] });
-        break;
-      }
-      case 'interactions': {
-        const { writeInteractions } = await import('../store/interaction-store.js');
-        await writeInteractions(value as StoreData['interactions']);
+        await writeInbox(value as StoreData['inbox']);
         break;
       }
       case 'following': {

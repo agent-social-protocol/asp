@@ -1,8 +1,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Manifest } from '../models/manifest.js';
 import type { ASPStore } from './store.js';
-import type { Message } from '../models/message.js';
-import type { Interaction } from '../models/interaction.js';
+import type { InboxEntry, InboxEntryKind } from '../models/inbox-entry.js';
 
 export interface ASPNodeOptions {
   manifest: Manifest;
@@ -65,6 +64,20 @@ export interface ASPPublishResult {
   error?: string;
 }
 
+export interface ASPInboxReadOptions {
+  cursor?: string;
+  since?: string;
+  thread?: string;
+  kind?: InboxEntryKind;
+  type?: string;
+  direction?: 'sent' | 'received';
+}
+
+export interface ASPInboxReadResult {
+  entries: InboxEntry[];
+  nextCursor: string | null;
+}
+
 export interface ASPClientTransport {
   searchIndex(
     runtime: ASPClientRuntime,
@@ -72,12 +85,8 @@ export interface ASPClientTransport {
   ): Promise<ASPSearchResult[]>;
   getInbox(
     runtime: ASPClientRuntime,
-    opts?: { since?: string; thread?: string },
-  ): Promise<Message[]>;
-  getInteractions(
-    runtime: ASPClientRuntime,
-    opts?: { since?: string; action?: string },
-  ): Promise<Interaction[]>;
+    opts?: ASPInboxReadOptions,
+  ): Promise<ASPInboxReadResult>;
   publish(
     runtime: ASPClientRuntime,
     opts: { title: string; summary: string; topics?: string[]; signalType?: string; metadata?: Record<string, unknown> },

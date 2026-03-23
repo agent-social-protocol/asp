@@ -56,7 +56,6 @@ const GENERATED_STORE_FILES = [
   'manifest.yaml',
   'feed.yaml',
   'following.yaml',
-  'interactions.yaml',
   'notifications.yaml',
   'relationships.yaml',
   'inbox.yaml',

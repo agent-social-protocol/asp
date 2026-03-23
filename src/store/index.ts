@@ -12,7 +12,6 @@ export interface StorePaths {
   manifestPath: string;
   feedPath: string;
   followingPath: string;
-  interactionsPath: string;
   notificationsPath: string;
   relationshipsPath: string;
   inboxPath: string;
@@ -43,7 +42,6 @@ export function getStorePaths(config: StoreConfig = {}): StorePaths {
     manifestPath: join(storeDir, 'manifest.yaml'),
     feedPath: join(storeDir, 'feed.yaml'),
     followingPath: join(storeDir, 'following.yaml'),
-    interactionsPath: join(storeDir, 'interactions.yaml'),
     notificationsPath: join(storeDir, 'notifications.yaml'),
     relationshipsPath: join(storeDir, 'relationships.yaml'),
     inboxPath: join(storeDir, 'inbox.yaml'),

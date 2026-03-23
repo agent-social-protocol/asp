@@ -33,9 +33,9 @@ export const statusCommand = new Command('status')
     const behavior = await readBehavior();
 
     const entity = manifest?.entity;
-    const messageCount = inbox.messages.length;
+    const inboxEntryCount = inbox.received.length;
     const newPosts = notifications.new_posts.length;
-    const newInteractions = notifications.new_interactions.length;
+    const newInboxEntries = notifications.new_entries.length;
 
     if (json) {
       output({
@@ -52,9 +52,9 @@ export const statusCommand = new Command('status')
         },
         activity: {
           feed_posts: feed.length,
-          inbox_messages: messageCount,
+          inbox_entries: inboxEntryCount,
           new_posts: newPosts,
-          new_interactions: newInteractions,
+          new_inbox_entries: newInboxEntries,
         },
         indexes: indexes.map(i => ({ url: i.url, last_synced: i.last_synced })),
         autonomy: behavior?.autonomy_level,
@@ -74,8 +74,8 @@ export const statusCommand = new Command('status')
     console.log(`  Relationships: ${relationships.length}`);
     console.log('');
     console.log(`  Feed posts:    ${feed.length}`);
-    console.log(`  Messages:      ${messageCount}`);
-    console.log(`  Notifications: ${newPosts} new posts, ${newInteractions} new interactions`);
+    console.log(`  Inbox entries: ${inboxEntryCount}`);
+    console.log(`  Notifications: ${newPosts} new posts, ${newInboxEntries} new inbox entries`);
     console.log('');
     if (indexes.length === 0) {
       console.log(`  Indexes:       (none) — run \`asp index register\` to be discoverable`);
@@ -102,8 +102,8 @@ export const statusCommand = new Command('status')
       suggestions.push('Be discoverable: asp index register');
     }
 
-    if (messageCount > 0) {
-      suggestions.push(`Read messages: asp inbox (${messageCount} messages)`);
+    if (inboxEntryCount > 0) {
+      suggestions.push(`Read inbox: asp inbox (${inboxEntryCount} entries)`);
     }
 
     const hosted = await isHosted();

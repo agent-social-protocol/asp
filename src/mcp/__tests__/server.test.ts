@@ -17,6 +17,7 @@ import { createDefaultBehavior } from '../../config/behavior.js';
 import { generateEncryptionKeyPair, generateKeyPair } from '../../utils/crypto.js';
 import { createASPMCPServer, resolveClient } from '../server.js';
 import { TOOL_DEFINITIONS } from '../tools.js';
+import { messageToInboxEntry } from '../../utils/inbox-entry.js';
 
 function makeTempIdentity(handle: string, name: string): { dir: string } {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'asp-mcp-test-'));
@@ -73,8 +74,8 @@ afterEach(() => {
 });
 
 describe('TOOL_DEFINITIONS', () => {
-  it('defines 10 tools with title, output schema, and annotations', () => {
-    expect(TOOL_DEFINITIONS).toHaveLength(10);
+  it('defines 9 tools with title, output schema, and annotations', () => {
+    expect(TOOL_DEFINITIONS).toHaveLength(9);
 
     for (const tool of TOOL_DEFINITIONS) {
       expect(tool.name).toBeTruthy();
@@ -102,11 +103,9 @@ describe('TOOL_DEFINITIONS', () => {
     expect(publish?.annotations?.openWorldHint).toBe(true);
   });
 
-  it('includes EXTERNAL DATA warning in inbox and interactions tool descriptions', () => {
+  it('includes EXTERNAL DATA warning in inbox tool descriptions', () => {
     const inbox = TOOL_DEFINITIONS.find((tool) => tool.name === 'asp_check_inbox');
-    const interactions = TOOL_DEFINITIONS.find((tool) => tool.name === 'asp_check_interactions');
     expect(inbox?.description).toContain('EXTERNAL DATA');
-    expect(interactions?.description).toContain('EXTERNAL DATA');
   });
 });
 
@@ -157,7 +156,7 @@ describe('resolveClient', () => {
 });
 
 describe('ASP MCP server', () => {
-  it('publishes server instructions and 10 structured tools', async () => {
+  it('publishes server instructions and 9 structured tools', async () => {
     const alice = makeTempIdentity('@alice', 'Alice');
     tempDirs.push(alice.dir);
 
@@ -168,7 +167,7 @@ describe('ASP MCP server', () => {
     expect(client.getInstructions()).toContain('external data');
 
     const tools = await client.listTools();
-    expect(tools.tools).toHaveLength(10);
+    expect(tools.tools).toHaveLength(9);
 
     const inboxTool = tools.tools.find((tool) => tool.name === 'asp_check_inbox');
     expect(inboxTool?.outputSchema).toBeDefined();
@@ -177,7 +176,7 @@ describe('ASP MCP server', () => {
     await cleanup();
   });
 
-  it('includes EXTERNAL DATA warning in inbox and interactions resource descriptions', async () => {
+  it('includes EXTERNAL DATA warning in inbox resource descriptions', async () => {
     const alice = makeTempIdentity('@alice', 'Alice');
     tempDirs.push(alice.dir);
 
@@ -187,10 +186,8 @@ describe('ASP MCP server', () => {
 
     const resources = await client.listResources();
     const inboxRes = resources.resources.find((r) => r.uri.includes('/inbox'));
-    const interactionsRes = resources.resources.find((r) => r.uri.includes('/interactions'));
 
     expect(inboxRes?.description).toContain('EXTERNAL DATA');
-    expect(interactionsRes?.description).toContain('EXTERNAL DATA');
 
     await cleanup();
   });
@@ -209,14 +206,12 @@ describe('ASP MCP server', () => {
     expect(uris).toContain('asp://identity/alice/summary');
     expect(uris).toContain('asp://identity/alice/manifest');
     expect(uris).toContain('asp://identity/alice/inbox');
-    expect(uris).toContain('asp://identity/alice/interactions');
 
     const templates = await client.listResourceTemplates();
     const templateUris = templates.resourceTemplates.map((template) => template.uriTemplate);
     expect(templateUris).toContain('asp://identity/{handle}/summary');
     expect(templateUris).toContain('asp://identity/{handle}/manifest');
     expect(templateUris).toContain('asp://identity/{handle}/inbox');
-    expect(templateUris).toContain('asp://identity/{handle}/interactions');
 
     await cleanup();
   });
@@ -231,7 +226,7 @@ describe('ASP MCP server', () => {
 
     const result = await client.readResource({ uri: 'asp://identities' });
     const payload = JSON.parse(result.contents[0].text) as {
-      identities: Array<{ handle: string; resources: { summary: string; manifest: string; inbox: string; interactions: string } }>;
+      identities: Array<{ handle: string; resources: { summary: string; manifest: string; inbox: string } }>;
     };
 
     expect(payload.identities).toHaveLength(1);
@@ -262,13 +257,7 @@ describe('ASP MCP server', () => {
       if (String(url).includes('/asp/inbox')) {
         return Promise.resolve({
           ok: true,
-          json: () => Promise.resolve({ messages }),
-        });
-      }
-      if (String(url).includes('/asp/interactions')) {
-        return Promise.resolve({
-          ok: true,
-          json: () => Promise.resolve({ interactions: [] }),
+          json: () => Promise.resolve({ entries: messages.map(messageToInboxEntry), next_cursor: null }),
         });
       }
       return Promise.resolve({ ok: false, status: 404 });
@@ -307,9 +296,10 @@ describe('ASP MCP server', () => {
     expect(manifest.entity.handle).toBe('@alice');
 
     const inboxResult = await client.readResource({ uri: 'asp://identity/alice/inbox' });
-    const inbox = JSON.parse(inboxResult.contents[0].text) as { identity: string; count: number };
+    const inbox = JSON.parse(inboxResult.contents[0].text) as { identity: string; count: number; entries: unknown[] };
     expect(inbox.identity).toBe('alice');
     expect(inbox.count).toBe(1);
+    expect(inbox.entries).toHaveLength(1);
 
     await cleanup();
   });
@@ -366,7 +356,7 @@ describe('ASP MCP server', () => {
       },
       relationships: [],
       capabilities: ['feed', 'inbox'],
-      endpoints: { feed: '/asp/feed', inbox: '/asp/inbox', interactions: '/asp/interactions' },
+      endpoints: { feed: '/asp/feed', inbox: '/asp/inbox' },
       verification: { public_key: 'ed25519:test' },
     };
 
@@ -409,7 +399,7 @@ describe('ASP MCP server', () => {
       },
       relationships: [],
       capabilities: ['feed', 'inbox'],
-      endpoints: { feed: '/asp/feed', inbox: '/asp/inbox', interactions: '/asp/interactions' },
+      endpoints: { feed: '/asp/feed', inbox: '/asp/inbox' },
       verification: { public_key: 'ed25519:test' },
     };
 

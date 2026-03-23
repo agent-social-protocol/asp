@@ -1,14 +1,31 @@
 import { Command } from 'commander';
 import { storeInitialized } from '../store/index.js';
 import { readFollowing } from '../store/following-store.js';
-import { readNotifications, writeNotifications, updateLastChecked } from '../store/notification-store.js';
-import { readInteractions } from '../store/interaction-store.js';
+import { readNotifications, updateLastChecked } from '../store/notification-store.js';
+import { readInbox } from '../store/inbox-store.js';
 import { fetchFeed } from '../utils/fetch-feed.js';
 import { output } from '../utils/output.js';
 import type { FeedEntry } from '../models/feed-entry.js';
+import type { InboxEntry } from '../models/inbox-entry.js';
+
+function describeInboxEntry(entry: InboxEntry): string {
+  const actor = entry.from || 'Someone';
+  if (entry.kind === 'interaction') {
+    if (entry.type === 'comment') {
+      return `${actor} commented: "${entry.content?.text ?? ''}"`;
+    }
+    return `${actor} ${entry.type}: ${entry.target || 'you'}`;
+  }
+
+  const summary = entry.content?.text?.trim();
+  if (summary) {
+    return `${actor} sent ${entry.type}: "${summary}"`;
+  }
+  return `${actor} sent ${entry.type}`;
+}
 
 export const notificationsCommand = new Command('notifications')
-  .description('Check for new posts and interactions')
+  .description('Check for new posts and inbox activity')
   .action(async (_opts, cmd) => {
     const json = cmd.optsWithGlobals().json;
 
@@ -20,7 +37,7 @@ export const notificationsCommand = new Command('notifications')
 
     const notifs = await readNotifications();
     const subs = await readFollowing();
-    const interactions = await readInteractions();
+    const inbox = await readInbox();
 
     // Fetch new posts since last check
     const newPosts: Array<FeedEntry & { source: string }> = [];
@@ -41,16 +58,16 @@ export const notificationsCommand = new Command('notifications')
       }
     }
 
-    // Get recent received interactions (since last check)
+    // Get recent received inbox entries (since last check)
     const lastChecked = new Date(notifs.last_checked).getTime();
-    const newInteractions = interactions.received.filter(
-      (i) => new Date(i.timestamp).getTime() > lastChecked
+    const newEntries = inbox.received.filter(
+      (entry) => new Date(entry.received_at ?? entry.timestamp).getTime() > lastChecked
     );
 
     if (json) {
-      output({ new_posts: newPosts, new_interactions: newInteractions }, true);
+      output({ new_posts: newPosts, new_entries: newEntries }, true);
     } else {
-      if (newPosts.length === 0 && newInteractions.length === 0) {
+      if (newPosts.length === 0 && newEntries.length === 0) {
         console.log('No new notifications.');
       } else {
         if (newPosts.length > 0) {
@@ -61,15 +78,10 @@ export const notificationsCommand = new Command('notifications')
           }
         }
 
-        if (newInteractions.length > 0) {
-          console.log(`\n${newInteractions.length} new interaction(s):\n`);
-          for (const i of newInteractions) {
-            const who = i.from || 'Someone';
-            if (i.action === 'comment') {
-              console.log(`  ${who} commented: "${i.content}"`);
-            } else {
-              console.log(`  ${who} ${i.action}: ${i.target || 'you'}`);
-            }
+        if (newEntries.length > 0) {
+          console.log(`\n${newEntries.length} new inbox entr${newEntries.length === 1 ? 'y' : 'ies'}:\n`);
+          for (const entry of newEntries) {
+            console.log(`  ${describeInboxEntry(entry)}`);
           }
         }
       }

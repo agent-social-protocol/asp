@@ -56,12 +56,8 @@ export const ManifestSchema = z.object({
   endpoints: z.object({
     feed: z.string(),
     inbox: z.string(),
-    interactions: z.string(),
     reputation: z.string().optional(),
   }),
-  access: z.object({
-    inbox: z.enum(['open', 'restricted']).optional(),
-  }).optional(),
   verification: VerificationSchema,
 });
 export type Manifest = z.infer<typeof ManifestSchema>;
@@ -107,12 +103,11 @@ export function createDefaultManifest(opts: {
       created_at: now,
     },
     relationships,
-    capabilities: ['feed', 'interactions', 'inbox', ...(opts.encryptionKey ? ['encrypted-dm'] : [])],
+    capabilities: ['feed', 'inbox', ...(opts.encryptionKey ? ['encrypted-dm'] : [])],
     ...(opts.skills?.length && { skills: opts.skills }),
     endpoints: {
       feed: '/asp/feed',
       inbox: '/asp/inbox',
-      interactions: '/asp/interactions',
     },
     verification: {
       public_key: opts.publicKey,

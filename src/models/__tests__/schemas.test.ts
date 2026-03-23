@@ -3,6 +3,7 @@ import * as z from 'zod/v4';
 import { ToolOutputSchemas } from '../../mcp/tools.js';
 import { createDefaultManifest, ManifestSchema } from '../manifest.js';
 import { MessageSchema, isMessage } from '../message.js';
+import { InboxEntrySchema } from '../inbox-entry.js';
 import { FeedEntrySchema, isFeedEntry } from '../feed-entry.js';
 
 describe('protocol schemas', () => {
@@ -22,33 +23,36 @@ describe('protocol schemas', () => {
     expect(isMessage({ ...validMessage, initiated_by: undefined })).toBe(false);
   });
 
-  it('reuses the shared message schema in MCP inbox output', () => {
+  it('reuses the shared inbox entry schema in MCP inbox output', () => {
     const InboxOutputSchema = z.object(ToolOutputSchemas.asp_check_inbox);
     const result = InboxOutputSchema.safeParse({
       identity: 'alice',
       count: 1,
-      messages: [{
+      entries: [{
         id: 'msg-1',
         from: 'https://bob.asp.social',
         to: 'https://alice.asp.social',
+        kind: 'message',
+        type: 'chat',
         timestamp: new Date().toISOString(),
-        intent: 'chat',
         content: { text: 'Hello Alice' },
         initiated_by: 'agent',
       }],
     });
 
     expect(result.success).toBe(true);
+    expect(InboxEntrySchema.safeParse((result.data as { entries: unknown[] }).entries[0]).success).toBe(true);
 
     const invalid = InboxOutputSchema.safeParse({
       identity: 'alice',
       count: 1,
-      messages: [{
+      entries: [{
         id: 'msg-1',
         from: 'https://bob.asp.social',
         to: 'https://alice.asp.social',
+        kind: 'message',
+        type: 'chat',
         timestamp: new Date().toISOString(),
-        intent: 'chat',
         content: { text: 'Hello Alice' },
       }],
     });

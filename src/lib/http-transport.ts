@@ -3,14 +3,14 @@ import type {
   ASPClientRuntime,
   ASPClientTransport,
   ASPClientTransportOptions,
+  ASPInboxReadOptions,
+  ASPInboxReadResult,
   ASPPublishResult,
   ASPSearchOptions,
   ASPSearchResult,
 } from './types.js';
-import type { Message } from '../models/message.js';
-import type { Interaction } from '../models/interaction.js';
-import { isInteraction } from '../models/interaction.js';
-import { isMessage } from '../models/message.js';
+import type { InboxEntry } from '../models/inbox-entry.js';
+import { isInboxEntry } from '../models/inbox-entry.js';
 import { buildSearchParams } from './search.js';
 import { buildEndpointUrl } from '../utils/endpoint-url.js';
 
@@ -69,12 +69,16 @@ export class HttpASPTransport implements ASPClientTransport {
 
   async getInbox(
     runtime: ASPClientRuntime,
-    opts?: { since?: string; thread?: string },
-  ): Promise<Message[]> {
+    opts?: ASPInboxReadOptions,
+  ): Promise<ASPInboxReadResult> {
     const nodeUrl = runtime.manifest.entity.id;
     const params = new URLSearchParams();
+    if (opts?.cursor) params.set('cursor', opts.cursor);
     if (opts?.since) params.set('since', opts.since);
     if (opts?.thread) params.set('thread', opts.thread);
+    if (opts?.kind) params.set('kind', opts.kind);
+    if (opts?.type) params.set('type', opts.type);
+    if (opts?.direction) params.set('direction', opts.direction);
 
     const url = buildEndpointUrl(nodeUrl, '/asp/inbox');
     if (params.size > 0) {
@@ -92,37 +96,10 @@ export class HttpASPTransport implements ASPClientTransport {
       throw new Error(`Inbox request failed: ${await readErrorMessage(res)}`);
     }
     const data = await res.json() as Record<string, unknown>;
-    const raw = Array.isArray(data.messages) ? data.messages : [];
-    return raw.filter((message): message is Message => isMessage(message));
-  }
-
-  async getInteractions(
-    runtime: ASPClientRuntime,
-    opts?: { since?: string; action?: string },
-  ): Promise<Interaction[]> {
-    const nodeUrl = runtime.manifest.entity.id;
-    const params = new URLSearchParams();
-    if (opts?.since) params.set('since', opts.since);
-    if (opts?.action) params.set('action', opts.action);
-
-    const url = buildEndpointUrl(nodeUrl, '/asp/interactions');
-    if (params.size > 0) {
-      url.search = params.toString();
-    }
-
-    const res = await fetch(url, {
-      headers: {
-        Accept: 'application/json',
-        Authorization: await runtime.makeAuthHeader('GET', url.pathname),
-      },
-    });
-
-    if (!res.ok) {
-      throw new Error(`Interactions request failed: ${await readErrorMessage(res)}`);
-    }
-    const data = await res.json() as Record<string, unknown>;
-    const raw = Array.isArray(data.interactions) ? data.interactions : [];
-    return raw.filter((interaction): interaction is Interaction => isInteraction(interaction));
+    const raw = Array.isArray(data.entries) ? data.entries : [];
+    const entries = raw.filter((entry): entry is InboxEntry => isInboxEntry(entry));
+    const nextCursor = typeof data.next_cursor === 'string' ? data.next_cursor : null;
+    return { entries, nextCursor };
   }
 
   async publish(
