@@ -277,7 +277,7 @@ export function createASPHandler(
           entries = entries.filter((entry) => entry.type === type);
         }
 
-        entries.sort((a, b) => getInboxEntryCursor(b).localeCompare(getInboxEntryCursor(a)));
+        entries.sort((a, b) => getInboxEntryCursor(a).localeCompare(getInboxEntryCursor(b)));
         const nextCursor = entries.length > 0 ? getInboxEntryCursor(entries[entries.length - 1]) : null;
 
         respond(res, 200, { entries, next_cursor: nextCursor }, wantsJson);
