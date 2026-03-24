@@ -277,7 +277,17 @@ export function createASPHandler(
           entries = entries.filter((entry) => entry.type === type);
         }
 
+        const since = url.searchParams.get('since');
+        if (since) {
+          entries = entries.filter((entry) => getInboxEntryCursor(entry) > since);
+        }
+
         entries.sort((a, b) => getInboxEntryCursor(a).localeCompare(getInboxEntryCursor(b)));
+
+        const limitParam = url.searchParams.get('limit');
+        const limit = limitParam ? Math.min(Math.max(1, parseInt(limitParam, 10) || 100), 100) : 100;
+        entries = entries.slice(0, limit);
+
         const nextCursor = entries.length > 0 ? getInboxEntryCursor(entries[entries.length - 1]) : null;
 
         respond(res, 200, { entries, next_cursor: nextCursor }, wantsJson);
