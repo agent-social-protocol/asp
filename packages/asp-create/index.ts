@@ -532,6 +532,7 @@ async function initializeIdentity(args: ParsedArgs): Promise<{
       required: { '--handle': 'Unique handle (3-30 lowercase alphanumeric/hyphens)', '--name': 'Display name' },
       optional: { '--bio': 'Short biography', '--post': 'First post text' },
       example: 'npx -y create-identity --handle alice --name "Alice"',
+      _agent_hint: 'Ask the user for the required fields, then re-run the command with the provided values as flags.',
     });
     process.exit(0);
   }
@@ -831,6 +832,7 @@ async function main(): Promise<void> {
         profile: copy.renderProfileLocation(currentEndpoint, handle),
         ...(followed ? { followed } : {}),
         actions,
+        _agent_hint: 'Present the actions above to the user as available commands they can ask you to run.',
       });
     } else {
       const shareTarget = renderShareTarget(currentEndpoint, handle);
@@ -875,6 +877,7 @@ async function main(): Promise<void> {
       endpoint: currentEndpoint,
       profile: profileLocation,
       share: copy.shareCommand(shareTarget),
+      _agent_hint: 'Registration complete. Tell the user their identity and profile URL. Suggest they share the "share" command with friends.',
     });
     return;
   }
