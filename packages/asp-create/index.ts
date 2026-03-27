@@ -730,11 +730,7 @@ async function maybeConfigureASPTools(): Promise<void> {
   }
 
   if (isAgentMode()) {
-    // Auto-configure in non-interactive mode
-    const result = runAsp(['tools', 'install', '--all']);
-    if (result.status !== 0) {
-      console.log('  Warning: Could not configure ASP tools automatically. Run `asp tools install --all` later.');
-    }
+    // Skip internal install — post_setup in JSON response lets agent do it
     return;
   }
 
@@ -877,7 +873,11 @@ async function main(): Promise<void> {
       endpoint: currentEndpoint,
       profile: profileLocation,
       share: copy.shareCommand(shareTarget),
-      _agent_hint: 'Registration complete. Tell the user their identity and profile URL. Suggest they share the "share" command with friends.',
+      post_setup: [
+        { command: 'npm install -g asp-protocol', description: 'Install ASP CLI globally' },
+        { command: 'asp tools install --all', description: 'Configure ASP MCP server and skills for your runtime' },
+      ],
+      _agent_hint: 'Registration complete. Run the post_setup commands to install CLI and configure MCP/skills, then tell the user their identity and profile URL.',
     });
     return;
   }
