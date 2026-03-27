@@ -15,6 +15,10 @@ interface ParsedArgs {
   identityOnly: boolean;
   skipToolsSetup: boolean;
   referrer: string | null;
+  handle: string | null;
+  name: string | null;
+  bio: string | null;
+  post: string | null;
 }
 
 type HostingMode = 'managed' | 'self-hosted';
@@ -137,6 +141,29 @@ function ask(question: string): Promise<string> {
   });
 }
 
+function isAgentMode(): boolean {
+  return !process.stdin.isTTY;
+}
+
+function outputJson(data: Record<string, unknown>): void {
+  console.log(JSON.stringify(data, null, 2));
+}
+
+interface AgentAction {
+  command: string;
+  description: string;
+}
+
+function getAgentActions(): AgentAction[] {
+  const raw = process.env.ASP_ACTIONS;
+  if (!raw) return [];
+  try {
+    return JSON.parse(raw) as AgentAction[];
+  } catch {
+    return [];
+  }
+}
+
 function parseArgs(args: string[]): ParsedArgs {
   let selfHost = false;
   let managed = false;
@@ -146,6 +173,10 @@ function parseArgs(args: string[]): ParsedArgs {
   let identityOnly = false;
   let skipToolsSetup = false;
   let referrer: string | null = null;
+  let handle: string | null = null;
+  let name: string | null = null;
+  let bio: string | null = null;
+  let post: string | null = null;
 
   for (let i = 0; i < args.length; i += 1) {
     const arg = args[i];
@@ -197,12 +228,21 @@ function parseArgs(args: string[]): ParsedArgs {
       continue;
     }
 
+    if ((arg === '--handle') && args[i + 1]) { handle = args[i + 1]; i += 1; continue; }
+    if (arg.startsWith('--handle=')) { handle = arg.slice('--handle='.length); continue; }
+    if ((arg === '--name') && args[i + 1]) { name = args[i + 1]; i += 1; continue; }
+    if (arg.startsWith('--name=')) { name = arg.slice('--name='.length); continue; }
+    if ((arg === '--bio') && args[i + 1]) { bio = args[i + 1]; i += 1; continue; }
+    if (arg.startsWith('--bio=')) { bio = arg.slice('--bio='.length); continue; }
+    if ((arg === '--post') && args[i + 1]) { post = args[i + 1]; i += 1; continue; }
+    if (arg.startsWith('--post=')) { post = arg.slice('--post='.length); continue; }
+
     if (!arg.startsWith('-') && !referrer) {
       referrer = arg;
     }
   }
 
-  return { selfHost, managed, provider, endpoint, isPrivate, identityOnly, skipToolsSetup, referrer };
+  return { selfHost, managed, provider, endpoint, isPrivate, identityOnly, skipToolsSetup, referrer, handle, name, bio, post };
 }
 
 function readManifest(): ManifestLike | null {
@@ -480,14 +520,32 @@ async function initializeIdentity(args: ParsedArgs): Promise<{
 
   const isHosted = !args.selfHost && !args.provider;
 
-  let handle = normalizeHandle(await ask('  Handle: '));
+  let handle: string;
+  if (args.handle) {
+    handle = normalizeHandle(args.handle);
+  } else if (process.stdin.isTTY) {
+    handle = normalizeHandle(await ask('  Handle: '));
+  } else {
+    outputJson({
+      status: 'needs_input',
+      message: 'ASP identity registration requires the following information',
+      required: { '--handle': 'Unique handle (3-30 lowercase alphanumeric/hyphens)', '--name': 'Display name' },
+      optional: { '--bio': 'Short biography', '--post': 'First post text' },
+      example: 'npx -y create-identity --handle alice --name "Alice"',
+    });
+    process.exit(0);
+  }
   if (!isValidHandle(handle)) {
-    console.log('  Invalid handle. Use 3-30 lowercase alphanumeric characters and hyphens.\n');
+    if (isAgentMode()) {
+      outputJson({ status: 'error', error: `Invalid handle "${handle}". Use 3-30 lowercase alphanumeric characters and hyphens.` });
+    } else {
+      console.log('  Invalid handle. Use 3-30 lowercase alphanumeric characters and hyphens.\n');
+    }
     process.exit(1);
   }
 
-  const name = await ask('  Name: ');
-  const bio = await ask('  Bio (optional): ');
+  const name = args.name ?? (process.stdin.isTTY ? await ask('  Name: ') : handle);
+  const bio = args.bio ?? (process.stdin.isTTY ? await ask('  Bio (optional): ') : '');
 
   let endpoint = args.endpoint;
   if (isHosted) {
@@ -670,6 +728,15 @@ async function maybeConfigureASPTools(): Promise<void> {
     return;
   }
 
+  if (isAgentMode()) {
+    // Auto-configure in non-interactive mode
+    const result = runAsp(['tools', 'install', '--all']);
+    if (result.status !== 0) {
+      console.log('  Warning: Could not configure ASP tools automatically. Run `asp tools install --all` later.');
+    }
+    return;
+  }
+
   const answer = await ask(`\n  Detected agent runtimes: ${runtimes.join(', ')}. Configure ASP tools now? [Y/n] `);
   if (answer.toLowerCase() === 'n') {
     console.log('  Skip for now. Run `asp tools install --all` later.');
@@ -682,7 +749,7 @@ async function maybeConfigureASPTools(): Promise<void> {
   }
 }
 
-async function runSocialOnboarding(referrer: string | null): Promise<void> {
+async function runSocialOnboarding(referrer: string | null, postFlag: string | null): Promise<void> {
   const copy = getCopyConfig();
 
   if (referrer) {
@@ -696,8 +763,16 @@ async function runSocialOnboarding(referrer: string | null): Promise<void> {
     }
   }
 
-  const postInput = await ask(copy.postPrompt);
-  const postText = postInput || copy.defaultPost;
+  let postText: string;
+  if (postFlag) {
+    postText = postFlag;
+  } else if (process.stdin.isTTY) {
+    const postInput = await ask(copy.postPrompt);
+    postText = postInput || copy.defaultPost;
+  } else {
+    postText = copy.defaultPost;
+  }
+
   const publishResult = spawnSync('asp', ['publish', postText], { stdio: 'pipe', encoding: 'utf-8' });
   if (publishResult.status === 0) {
     console.log('  ✓ Published');
@@ -712,7 +787,7 @@ async function main(): Promise<void> {
   const embedded = isEmbeddedFlow();
   const brandedSocialFlow = isBrandedSocialFlow(copy);
 
-  if (!embedded) {
+  if (!embedded && !isAgentMode()) {
     if (brandedSocialFlow) {
       console.log('\n  ✦ Create Your Identity\n');
       if (copy.poweredBy) {
@@ -729,15 +804,54 @@ async function main(): Promise<void> {
 
   const { created, handle, endpoint, createdAsPrivate, createdRequiresDeployment } = await initializeIdentity(parsed);
   if (!created) {
-    const shareTarget = renderShareTarget(endpoint, handle);
-    console.log(`  Using existing identity ${shareTarget}\n`);
-  } else {
-    console.log('');
+    // Follow referrer even when already registered
+    let followed: string | null = null;
+    if (parsed.referrer) {
+      const display = parsed.referrer.startsWith('@') ? parsed.referrer : `@${parsed.referrer}`;
+      const followResult = spawnSync('asp', ['follow', parsed.referrer], { stdio: 'pipe', encoding: 'utf-8' });
+      if (!isAgentMode()) {
+        if (followResult.status === 0) {
+          console.log(`  ✓ Now following ${display}`);
+        } else {
+          console.log(`  Warning: Could not follow ${display}`);
+        }
+      }
+      if (followResult.status === 0) followed = parsed.referrer;
+    }
+
+    const currentManifest = readManifest();
+    const currentEndpoint = currentManifest?.entity?.id ?? endpoint;
+    const actions = getAgentActions();
+
+    if (isAgentMode()) {
+      outputJson({
+        status: 'already_registered',
+        handle,
+        endpoint: currentEndpoint,
+        profile: copy.renderProfileLocation(currentEndpoint, handle),
+        ...(followed ? { followed } : {}),
+        actions,
+      });
+    } else {
+      const shareTarget = renderShareTarget(currentEndpoint, handle);
+      const profileLocation = copy.renderProfileLocation(currentEndpoint, handle);
+      console.log(`\n  You already have an identity: ${shareTarget}`);
+      if (profileLocation) {
+        console.log(`  Profile: ${profileLocation}`);
+      }
+      if (actions.length > 0) {
+        console.log('\n  What would you like to do?\n');
+        actions.forEach((a) => console.log(`    ${a.command}  — ${a.description}`));
+      }
+      console.log('');
+    }
+    return;
   }
+  console.log('');
 
   const socialFlowEnabled = !parsed.identityOnly && !parsed.isPrivate && !parsed.selfHost && !parsed.provider;
   if (socialFlowEnabled) {
-    await runSocialOnboarding(parsed.referrer);
+    await runSocialOnboarding(parsed.referrer, parsed.post);
   }
 
   if (created && !parsed.skipToolsSetup) {
@@ -753,6 +867,17 @@ async function main(): Promise<void> {
   const currentEndpoint = currentManifest?.entity?.id ?? endpoint;
   const shareTarget = renderShareTarget(currentEndpoint, currentHandle);
   const profileLocation = copy.renderProfileLocation(currentEndpoint, currentHandle);
+
+  if (isAgentMode()) {
+    outputJson({
+      status: 'ok',
+      handle: currentHandle,
+      endpoint: currentEndpoint,
+      profile: profileLocation,
+      share: copy.shareCommand(shareTarget),
+    });
+    return;
+  }
 
   console.log('\n  ─────────────────────────────────\n');
   console.log(`  ${copy.identityLabel}: ${shareTarget}`);
