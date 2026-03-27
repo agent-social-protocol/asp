@@ -233,7 +233,16 @@ function ensureAspCli(): void {
   }
 
   console.log('  Installing asp-protocol...');
-  spawnSync('npm', ['install', '-g', 'asp-protocol'], { stdio: 'inherit' });
+  const install = spawnSync('npm', ['install', '-g', 'asp-protocol'], { stdio: 'inherit' });
+
+  const verify = spawnSync('asp', ['--version'], { stdio: 'ignore' });
+  if (verify.status !== 0) {
+    console.log('  Failed to install asp-protocol globally.');
+    if (install.status !== 0) {
+      console.log('  You may need to run: sudo npm install -g asp-protocol');
+    }
+    process.exit(1);
+  }
 }
 
 async function checkHandleAvailability(handle: string): Promise<HandleCheckResult> {
