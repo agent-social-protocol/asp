@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 import { spawnSync } from 'node:child_process';
+import { createRequire } from 'node:module';
 import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { createInterface } from 'node:readline';
 import yaml from 'js-yaml';
 
@@ -259,11 +260,32 @@ function getCurrentHandle(): string | null {
   return readManifest()?.entity?.handle ?? null;
 }
 
+function resolveAspBinary(): string | null {
+  try {
+    const require_ = createRequire(import.meta.url);
+    const packageJsonPath = require_.resolve('asp-protocol/package.json');
+    return join(dirname(packageJsonPath), 'dist', 'bin', 'asp.js');
+  } catch {
+    return null;
+  }
+}
+
 function runAsp(args: string[], inherit = true): ReturnType<typeof spawnSync> {
-  return spawnSync('asp', args, {
-    stdio: inherit ? 'inherit' : 'pipe',
-    encoding: 'utf-8',
-  });
+  const stdio = inherit ? 'inherit' as const : 'pipe' as const;
+  const result = spawnSync('asp', args, { stdio, encoding: 'utf-8' });
+
+  if (result.error && (result.error as NodeJS.ErrnoException).code === 'ENOENT') {
+    const resolved = resolveAspBinary();
+    if (resolved) {
+      const fallback = spawnSync(process.execPath, [resolved, ...args], { stdio, encoding: 'utf-8' });
+      if (!fallback.error || (fallback.error as NodeJS.ErrnoException).code !== 'ENOENT') {
+        return fallback;
+      }
+    }
+    return spawnSync('npx', ['-y', '-p', 'asp-protocol', 'asp', ...args], { stdio, encoding: 'utf-8' });
+  }
+
+  return result;
 }
 
 function ensureAspCli(): void {
@@ -272,17 +294,13 @@ function ensureAspCli(): void {
     return;
   }
 
-  console.log('  Installing asp-protocol...');
-  const install = spawnSync('npm', ['install', '-g', 'asp-protocol'], { stdio: 'inherit' });
-
-  const verify = spawnSync('asp', ['--version'], { stdio: 'ignore' });
-  if (verify.status !== 0) {
-    console.log('  Failed to install asp-protocol globally.');
-    if (install.status !== 0) {
-      console.log('  You may need to run: sudo npm install -g asp-protocol');
-    }
-    process.exit(1);
+  const resolved = resolveAspBinary();
+  if (resolved) {
+    return;
   }
+
+  console.log('  ASP CLI not found. Install it with: npm install -g asp-protocol');
+  process.exit(1);
 }
 
 async function checkHandleAvailability(handle: string): Promise<HandleCheckResult> {
@@ -874,8 +892,8 @@ async function main(): Promise<void> {
       profile: profileLocation,
       share: copy.shareCommand(shareTarget),
       post_setup: [
-        { command: 'npm install -g asp-protocol', description: 'Install ASP CLI globally' },
-        { command: 'asp tools install --all', description: 'Configure ASP MCP server and skills for your runtime' },
+        { command: 'npm install -g create-identity', description: 'Install letus CLI permanently' },
+        { command: 'letus tools install --all', description: 'Configure ASP MCP server and skills for your runtime' },
       ],
       _agent_hint: 'Registration complete. Run the post_setup commands to install CLI and configure MCP/skills, then tell the user their identity and profile URL.',
     });
