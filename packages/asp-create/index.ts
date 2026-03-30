@@ -880,7 +880,7 @@ async function main(): Promise<void> {
     if (profileLocation) {
       console.log(`  Profile: ${profileLocation}`);
     }
-    console.log(`\n  Share with friends: ${copy.shareCommand(shareTarget)}\n`);
+    console.log(`\n  Share with friends: "run ${copy.shareCommand(shareTarget)}"\n`);
     return;
   }
 
@@ -903,7 +903,7 @@ async function main(): Promise<void> {
     console.log(`  Profile: ${profileLocation}\n`);
   }
   console.log(`  ${copy.shareLabel}`);
-  console.log(`    ${copy.shareCommand(shareTarget)}\n`);
+  console.log(`    run ${copy.shareCommand(shareTarget)}\n`);
 }
 
 main().catch((err) => {
