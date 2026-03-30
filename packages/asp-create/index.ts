@@ -31,6 +31,12 @@ interface ManifestLike {
     name?: string;
     bio?: string;
   };
+  capabilities?: string[];
+  endpoints?: {
+    feed?: string;
+    inbox?: string;
+    stream?: string;
+  };
   verification?: {
     public_key?: string;
   };
@@ -369,6 +375,13 @@ async function registerHostedIdentity(initialHandle: string): Promise<HostedRegi
   while (true) {
     manifest.entity.handle = handle;
     manifest.entity.id = buildHostedEndpoint(handle);
+    manifest.capabilities = [...new Set([...(manifest.capabilities ?? []), 'stream'])];
+    manifest.endpoints = {
+      ...(manifest.endpoints ?? {}),
+      ...(typeof manifest.endpoints?.feed === 'string' ? {} : { feed: '/asp/feed' }),
+      ...(typeof manifest.endpoints?.inbox === 'string' ? {} : { inbox: '/asp/inbox' }),
+      stream: '/asp/ws',
+    };
     writeManifest(manifest);
 
     let res: Response;
