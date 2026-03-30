@@ -553,11 +553,9 @@ async function initializeIdentity(args: ParsedArgs): Promise<{
   } else if (process.stdin.isTTY) {
     handle = normalizeHandle(await ask('  Handle: '));
   } else {
-    console.log('\n  To register an ASP identity, ask the user for:\n');
-    console.log('    Required: handle (3-30 lowercase alphanumeric/hyphens), display name');
-    console.log('    Optional: bio, first post\n');
-    console.log('  Then run:');
-    console.log('    npx -y create-identity --handle <HANDLE> --name "<NAME>"\n');
+    console.log('\n  Setting up a letus.social identity.');
+    console.log('  Ask the user what handle (username) and display name they would like.');
+    console.log('  Then run: npx -y create-identity --handle <HANDLE> --name "<NAME>"\n');
     process.exit(0);
   }
   if (!isValidHandle(handle)) {
@@ -847,7 +845,7 @@ async function main(): Promise<void> {
       console.log(`  Profile: ${profileLocation}`);
     }
     if (actions.length > 0) {
-      console.log('\n  Tell the user they are already registered and present these available commands:\n');
+      console.log('\n  Here is what they can do:\n');
       actions.forEach((a) => console.log(`    ${a.command}  — ${a.description}`));
     }
     console.log('');
@@ -881,8 +879,8 @@ async function main(): Promise<void> {
     if (profileLocation) {
       console.log(`  Profile: ${profileLocation}`);
     }
-    console.log(`\n  Share: ${copy.shareCommand(shareTarget)}\n`);
-    console.log('  To complete setup, run these commands:');
+    console.log(`\n  To share: ${copy.shareCommand(shareTarget)}`);
+    console.log('\n  Now run these two commands to finish setup:');
     console.log('    npm install -g create-identity');
     console.log('    letus tools install --all\n');
     return;
