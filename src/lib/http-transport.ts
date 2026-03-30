@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type {
   ASPClientRuntime,
+  ASPInboxStreamConfig,
   ASPClientTransport,
   ASPClientTransportOptions,
   ASPInboxReadOptions,
@@ -100,6 +101,22 @@ export class HttpASPTransport implements ASPClientTransport {
     const entries = raw.filter((entry): entry is InboxEntry => isInboxEntry(entry));
     const nextCursor = typeof data.next_cursor === 'string' ? data.next_cursor : null;
     return { entries, nextCursor };
+  }
+
+  async resolveInboxStream(runtime: ASPClientRuntime): Promise<ASPInboxStreamConfig | null> {
+    const streamEndpoint = runtime.manifest.endpoints.stream;
+    if (!runtime.manifest.capabilities.includes('stream') || typeof streamEndpoint !== 'string' || streamEndpoint.trim() === '') {
+      return null;
+    }
+
+    const url = buildEndpointUrl(runtime.manifest.entity.id, streamEndpoint);
+    if (url.protocol === 'https:') {
+      url.protocol = 'wss:';
+    } else if (url.protocol === 'http:') {
+      url.protocol = 'ws:';
+    }
+
+    return { url: url.toString() };
   }
 
   async publish(

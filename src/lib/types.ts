@@ -35,6 +35,10 @@ export interface ASPClientRuntime {
   makeAuthHeader(method: string, pathname: string): Promise<string>;
 }
 
+export interface ASPInboxStreamConfig {
+  url: string;
+}
+
 export interface ASPClientTransportOptions {
   coreIndexUrl?: string;
 }
@@ -87,6 +91,9 @@ export interface ASPClientTransport {
     runtime: ASPClientRuntime,
     opts?: ASPInboxReadOptions,
   ): Promise<ASPInboxReadResult>;
+  resolveInboxStream?(
+    runtime: ASPClientRuntime,
+  ): Promise<ASPInboxStreamConfig | null>;
   publish(
     runtime: ASPClientRuntime,
     opts: { title: string; summary: string; topics?: string[]; signalType?: string; metadata?: Record<string, unknown> },

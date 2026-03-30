@@ -56,6 +56,7 @@ export const ManifestSchema = z.object({
   endpoints: z.object({
     feed: z.string(),
     inbox: z.string(),
+    stream: z.string().optional(),
     reputation: z.string().optional(),
   }),
   verification: VerificationSchema,
