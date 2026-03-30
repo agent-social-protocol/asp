@@ -231,10 +231,12 @@ function parseArgs(args: string[]): ParsedArgs {
       continue;
     }
 
-    if ((arg === '--handle') && args[i + 1]) { handle = args[i + 1]; i += 1; continue; }
+    if ((arg === '--handle' || arg === '--username') && args[i + 1]) { handle = args[i + 1]; i += 1; continue; }
     if (arg.startsWith('--handle=')) { handle = arg.slice('--handle='.length); continue; }
-    if ((arg === '--name') && args[i + 1]) { name = args[i + 1]; i += 1; continue; }
+    if (arg.startsWith('--username=')) { handle = arg.slice('--username='.length); continue; }
+    if ((arg === '--name' || arg === '--display-name') && args[i + 1]) { name = args[i + 1]; i += 1; continue; }
     if (arg.startsWith('--name=')) { name = arg.slice('--name='.length); continue; }
+    if (arg.startsWith('--display-name=')) { name = arg.slice('--display-name='.length); continue; }
     if ((arg === '--bio') && args[i + 1]) { bio = args[i + 1]; i += 1; continue; }
     if (arg.startsWith('--bio=')) { bio = arg.slice('--bio='.length); continue; }
     if ((arg === '--post') && args[i + 1]) { post = args[i + 1]; i += 1; continue; }
@@ -554,6 +556,7 @@ async function initializeIdentity(args: ParsedArgs): Promise<{
     handle = normalizeHandle(await ask('  Handle: '));
   } else {
     console.log('  Choose a username and display name for your letus.social identity.\n');
+    console.log('  Example: npx -y create-identity --username alice --display-name "Alice"\n');
     process.exit(0);
   }
   if (!isValidHandle(handle)) {

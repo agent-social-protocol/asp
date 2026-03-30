@@ -1,6 +1,6 @@
 {
   "name": "asp-create",
-  "version": "0.2.13",
+  "version": "0.2.14",
   "description": "Shared onboarding engine for public ASP entry points",
   "type": "module",
   "bin": "./dist/index.js",
