@@ -553,7 +553,7 @@ async function initializeIdentity(args: ParsedArgs): Promise<{
   } else if (process.stdin.isTTY) {
     handle = normalizeHandle(await ask('  Handle: '));
   } else {
-    console.log('  Provide --handle and --name to create your letus.social identity.\n');
+    console.log('  To create your letus.social identity, choose a username and display name.\n');
     console.log('  Example: npx -y create-identity --handle alice --name "Alice"\n');
     process.exit(0);
   }
