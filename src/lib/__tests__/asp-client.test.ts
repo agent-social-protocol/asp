@@ -91,6 +91,7 @@ class MockStreamWebSocket {
   static instances: MockStreamWebSocket[] = [];
 
   readonly sent: string[] = [];
+  readonly closeCalls: Array<{ code: number; reason?: string }> = [];
   readonly url: string;
   readyState = MockStreamWebSocket.CONNECTING;
   private listeners = new Map<string, WebSocketListener[]>();
@@ -115,9 +116,10 @@ class MockStreamWebSocket {
     this.sent.push(data);
   }
 
-  close(code = 1000) {
+  close(code = 1000, reason?: string) {
     this.readyState = MockStreamWebSocket.CLOSED;
-    this.dispatch('close', { code });
+    this.closeCalls.push({ code, reason });
+    this.dispatch('close', { code, reason });
   }
 
   emitOpen() {
@@ -133,6 +135,10 @@ class MockStreamWebSocket {
 
   emitError() {
     this.dispatch('error', new Event('error'));
+  }
+
+  listenerCount(type: string): number {
+    return (this.listeners.get(type) ?? []).length;
   }
 
   private dispatch(type: string, event: any) {
@@ -582,7 +588,9 @@ describe('ASPClient', () => {
 
       socket.emitMessage({
         type: 'entry',
+        identity: 'alice',
         cursor: '2026-03-30T12:00:00.000Z|42',
+        replay: false,
         entry: {
           id: 'msg-1',
           from: 'https://bob.asp.social',
@@ -631,7 +639,9 @@ describe('ASPClient', () => {
 
       firstSocket.emitMessage({
         type: 'entry',
+        identity: 'alice',
         cursor: '2026-03-30T12:00:00.000Z|42',
+        replay: false,
         entry: {
           id: 'msg-1',
           from: 'https://bob.asp.social',
@@ -672,6 +682,203 @@ describe('ASPClient', () => {
       });
       await secondConnect;
       secondClient.disconnect();
+    });
+
+    it('falls back to polling while reconnecting and returns to websocket delivery', async () => {
+      vi.useFakeTimers();
+      try {
+        enableStreamCapability(tmpDir);
+        MockStreamWebSocket.instances = [];
+        vi.stubGlobal('WebSocket', MockStreamWebSocket as any);
+
+        let inboxReads = 0;
+        const fetchMock = vi.fn().mockImplementation((url: string) => {
+          if (String(url).includes('/asp/inbox')) {
+            inboxReads += 1;
+            return Promise.resolve({
+              ok: true,
+              json: () => Promise.resolve({
+                entries: inboxReads === 1
+                  ? [{
+                    id: 'poll-msg-1',
+                    from: 'https://bob.asp.social',
+                    to: 'https://alice.asp.social',
+                    kind: 'message',
+                    type: 'chat',
+                    timestamp: new Date(Date.now() + 10_000).toISOString(),
+                    received_at: new Date(Date.now() + 10_000).toISOString(),
+                    content: { text: 'Recovered via polling' },
+                    initiated_by: 'agent',
+                  }]
+                  : [],
+                next_cursor: inboxReads === 1 ? '2026-03-30T12:00:10.000Z|7' : null,
+              }),
+            });
+          }
+          return Promise.resolve({ ok: false });
+        });
+        vi.stubGlobal('fetch', fetchMock);
+
+        const client = new ASPClient({ identityDir: tmpDir });
+        const received: Message[] = [];
+        client.on('message', (message) => received.push(message));
+
+        const connectPromise = client.connect();
+        await vi.waitFor(() => {
+          expect(MockStreamWebSocket.instances).toHaveLength(1);
+        });
+        const firstSocket = MockStreamWebSocket.instances[0];
+        firstSocket.emitMessage({ type: 'challenge', nonce: 'nonce-1' });
+        await vi.waitFor(() => {
+          expect(firstSocket.sent).toHaveLength(1);
+        });
+        firstSocket.emitMessage({ type: 'auth_ok', resumed_from_cursor: null });
+        await connectPromise;
+
+        firstSocket.close(1012, 'server_restart');
+        await vi.waitFor(() => {
+          expect(fetchMock).toHaveBeenCalledTimes(1);
+        });
+        expect(received.map((message) => message.id)).toContain('poll-msg-1');
+
+        await vi.advanceTimersByTimeAsync(1_000);
+        await vi.waitFor(() => {
+          expect(MockStreamWebSocket.instances).toHaveLength(2);
+        });
+        const secondSocket = MockStreamWebSocket.instances[1];
+        secondSocket.emitMessage({ type: 'challenge', nonce: 'nonce-2' });
+        await vi.waitFor(() => {
+          expect(secondSocket.sent).toHaveLength(1);
+        });
+        secondSocket.emitMessage({
+          type: 'auth_ok',
+          resumed_from_cursor: '2026-03-30T12:00:10.000Z|7',
+        });
+
+        const pollReadsAfterReconnect = fetchMock.mock.calls.length;
+        await vi.advanceTimersByTimeAsync(60_000);
+        expect(fetchMock).toHaveBeenCalledTimes(pollReadsAfterReconnect);
+
+        client.disconnect();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('dedupes replayed entries and cleans websocket listeners on recovery and disconnect', async () => {
+      vi.useFakeTimers();
+      try {
+        enableStreamCapability(tmpDir);
+        MockStreamWebSocket.instances = [];
+        vi.stubGlobal('WebSocket', MockStreamWebSocket as any);
+
+        const fetchMock = vi.fn().mockImplementation((url: string) => {
+          if (String(url).includes('/asp/inbox')) {
+            return Promise.resolve({
+              ok: true,
+              json: () => Promise.resolve({
+                entries: [],
+                next_cursor: null,
+              }),
+            });
+          }
+          return Promise.resolve({ ok: false });
+        });
+        vi.stubGlobal('fetch', fetchMock);
+
+        const client = new ASPClient({ identityDir: tmpDir });
+        const received: Message[] = [];
+        client.on('message', (message) => received.push(message));
+
+        const connectPromise = client.connect();
+        await vi.waitFor(() => {
+          expect(MockStreamWebSocket.instances).toHaveLength(1);
+        });
+        const firstSocket = MockStreamWebSocket.instances[0];
+        firstSocket.emitMessage({ type: 'challenge', nonce: 'nonce-1' });
+        await vi.waitFor(() => {
+          expect(firstSocket.sent).toHaveLength(1);
+        });
+        firstSocket.emitMessage({ type: 'auth_ok', resumed_from_cursor: null });
+        await connectPromise;
+
+        expect(firstSocket.listenerCount('message')).toBeGreaterThan(0);
+        expect(firstSocket.listenerCount('error')).toBeGreaterThan(0);
+        expect(firstSocket.listenerCount('close')).toBeGreaterThan(0);
+
+        firstSocket.emitMessage({
+          type: 'entry',
+          identity: 'alice',
+          cursor: '2026-03-30T12:00:00.000Z|42',
+          replay: false,
+          entry: {
+            id: 'msg-1',
+            from: 'https://bob.asp.social',
+            to: 'https://alice.asp.social',
+            kind: 'message',
+            type: 'chat',
+            timestamp: '2026-03-30T12:00:00.000Z',
+            received_at: '2026-03-30T12:00:00.000Z',
+            content: { text: 'Hello once' },
+            initiated_by: 'agent',
+          },
+        });
+        await vi.waitFor(() => {
+          expect(received).toHaveLength(1);
+        });
+
+        firstSocket.close(1012, 'server_restart');
+        await vi.waitFor(() => {
+          expect(fetchMock).toHaveBeenCalledTimes(1);
+        });
+        expect(firstSocket.listenerCount('message')).toBe(0);
+        expect(firstSocket.listenerCount('error')).toBe(0);
+        expect(firstSocket.listenerCount('close')).toBe(0);
+
+        await vi.advanceTimersByTimeAsync(1_000);
+        await vi.waitFor(() => {
+          expect(MockStreamWebSocket.instances).toHaveLength(2);
+        });
+        const secondSocket = MockStreamWebSocket.instances[1];
+        secondSocket.emitMessage({ type: 'challenge', nonce: 'nonce-2' });
+        await vi.waitFor(() => {
+          expect(secondSocket.sent).toHaveLength(1);
+        });
+        expect(JSON.parse(secondSocket.sent[0])).toMatchObject({
+          cursor: '2026-03-30T12:00:00.000Z|42',
+        });
+        secondSocket.emitMessage({
+          type: 'auth_ok',
+          resumed_from_cursor: '2026-03-30T12:00:00.000Z|42',
+        });
+
+        secondSocket.emitMessage({
+          type: 'entry',
+          identity: 'alice',
+          cursor: '2026-03-30T12:00:00.000Z|42',
+          replay: true,
+          entry: {
+            id: 'msg-1',
+            from: 'https://bob.asp.social',
+            to: 'https://alice.asp.social',
+            kind: 'message',
+            type: 'chat',
+            timestamp: '2026-03-30T12:00:00.000Z',
+            received_at: '2026-03-30T12:00:00.000Z',
+            content: { text: 'Hello once' },
+            initiated_by: 'agent',
+          },
+        });
+        await Promise.resolve();
+        expect(received).toHaveLength(1);
+
+        client.disconnect();
+        expect(secondSocket.listenerCount('message')).toBe(0);
+        expect(secondSocket.listenerCount('error')).toBe(0);
+        expect(secondSocket.listenerCount('close')).toBe(0);
+      } finally {
+        vi.useRealTimers();
+      }
     });
   });
 

@@ -41,6 +41,9 @@ import { HostedASPTransport } from '../hosted/transport.js';
 
 const DEFAULT_POLL_INTERVAL_MS = 60_000; // 1 minute
 const DEFAULT_STREAM_HANDSHAKE_TIMEOUT_MS = 5_000;
+const DEFAULT_STREAM_RECONNECT_BASE_MS = 1_000;
+const DEFAULT_STREAM_RECONNECT_MAX_MS = 300_000;
+const RECENT_DELIVERY_KEY_LIMIT = 2_048;
 
 interface InboxDeliveryStateFile {
   cursor: string | null;
@@ -60,7 +63,9 @@ interface HostedWsAuthOkMessage {
 
 interface HostedWsEntryMessage {
   type: 'entry';
+  identity: string;
   cursor: string;
+  replay: boolean;
   entry: InboxEntry;
 }
 
@@ -72,6 +77,17 @@ interface HostedWsCaughtUpMessage {
 interface HostedWsErrorMessage {
   type: 'error';
   error: string;
+}
+
+interface StreamSocketLifecycle {
+  socket: WebSocket;
+  cleanup: () => void;
+}
+
+interface InboxDeliveryMetadata {
+  cursor?: string | null;
+  identity?: string | null;
+  replay?: boolean;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -109,13 +125,15 @@ function isHostedWsChallengeMessage(value: unknown): value is HostedWsChallengeM
 function isHostedWsAuthOkMessage(value: unknown): value is HostedWsAuthOkMessage {
   return isRecord(value)
     && value.type === 'auth_ok'
-    && (typeof value.resumed_from_cursor === 'string' || value.resumed_from_cursor === null || value.resumed_from_cursor === undefined);
+    && (typeof value.resumed_from_cursor === 'string' || value.resumed_from_cursor === null);
 }
 
 function isHostedWsEntryMessage(value: unknown): value is HostedWsEntryMessage {
   return isRecord(value)
     && value.type === 'entry'
+    && typeof value.identity === 'string'
     && typeof value.cursor === 'string'
+    && typeof value.replay === 'boolean'
     && isInboxEntry(value.entry);
 }
 
@@ -155,12 +173,19 @@ export class ASPClient extends EventEmitter<ASPClientEventMap> {
   // Polling state
   private _pollTimer: ReturnType<typeof setInterval> | null = null;
   private _streamSocket: WebSocket | null = null;
+  private _streamLifecycle: StreamSocketLifecycle | null = null;
+  private _pendingStreamLifecycle: StreamSocketLifecycle | null = null;
+  private _streamReconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private _streamReconnectAttempt = 0;
+  private _streamConfig: ASPInboxStreamConfig | null = null;
   private _connectPromise: Promise<void> | null = null;
   private _disconnectRequested = false;
   private _pollIntervalMs: number;
   private _lastInboxCursor: string | null = null;
   private _lastInboxSince: string | null = null;
   private _deliveryStatePath: string | null;
+  private _recentDeliveryKeys = new Set<string>();
+  private _recentDeliveryOrder: string[] = [];
 
   constructor(opts: ASPClientOptions) {
     super();
@@ -223,14 +248,11 @@ export class ASPClient extends EventEmitter<ASPClientEventMap> {
   disconnect(): void {
     const wasConnected = this.connected || this._connectPromise !== null;
     this._disconnectRequested = true;
+    this._clearStreamReconnectTimer();
+    this._stopPolling();
+    this._closePendingStreamSocket();
 
-    if (this._pollTimer) {
-      clearInterval(this._pollTimer);
-      this._pollTimer = null;
-    }
-
-    const socket = this._streamSocket;
-    this._streamSocket = null;
+    const socket = this._clearActiveStreamSocket();
     if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) {
       try {
         socket.close(1000, 'client_disconnect');
@@ -443,13 +465,15 @@ export class ASPClient extends EventEmitter<ASPClientEventMap> {
       performedImmediateCatchUp = true;
     }
 
-    const streamConnected = await this._connectStream();
+    this._streamConfig = await this._resolveInboxStream();
+    const streamConnected = await this._connectStream(this._streamConfig);
     if (!streamConnected) {
       if (restoredState && !performedImmediateCatchUp) {
         await this._pollOnce();
       }
       if (!this._disconnectRequested) {
         this._startPolling();
+        this._scheduleStreamReconnect();
       }
     }
 
@@ -463,6 +487,14 @@ export class ASPClient extends EventEmitter<ASPClientEventMap> {
       return;
     }
     this._pollTimer = setInterval(() => void this._poll(), this._pollIntervalMs);
+  }
+
+  private _stopPolling(): void {
+    if (!this._pollTimer) {
+      return;
+    }
+    clearInterval(this._pollTimer);
+    this._pollTimer = null;
   }
 
   private async _pollOnce(): Promise<void> {
@@ -496,24 +528,28 @@ export class ASPClient extends EventEmitter<ASPClientEventMap> {
     }
   }
 
-  private async _connectStream(): Promise<boolean> {
+  private async _resolveInboxStream(): Promise<ASPInboxStreamConfig | null> {
     if (!this._transport.resolveInboxStream) {
-      return false;
+      return null;
     }
 
-    let config: ASPInboxStreamConfig | null;
     try {
-      config = await this._transport.resolveInboxStream(this._runtime());
+      return await this._transport.resolveInboxStream(this._runtime());
     } catch {
-      return false;
+      return null;
     }
+  }
 
+  private async _connectStream(config: ASPInboxStreamConfig | null): Promise<boolean> {
     if (!config) {
       return false;
     }
 
     try {
       await this._openStreamSocket(config);
+      this._streamReconnectAttempt = 0;
+      this._clearStreamReconnectTimer();
+      this._stopPolling();
       return this._streamSocket !== null;
     } catch {
       return false;
@@ -525,18 +561,19 @@ export class ASPClient extends EventEmitter<ASPClientEventMap> {
       const socket = new WebSocket(config.url);
       let authenticated = false;
       let settled = false;
-      const timeout = setTimeout(() => {
-        fail(new Error('Inbox stream handshake timed out'));
-      }, DEFAULT_STREAM_HANDSHAKE_TIMEOUT_MS);
+      let timeout: ReturnType<typeof setTimeout> | null = null;
 
-      const finish = () => {
-        if (settled) {
-          return;
+      const cleanup = () => {
+        if (timeout) {
+          clearTimeout(timeout);
+          timeout = null;
         }
-        settled = true;
-        clearTimeout(timeout);
-        this._streamSocket = socket;
-        resolve();
+        socket.removeEventListener('message', onMessage);
+        socket.removeEventListener('error', onError);
+        socket.removeEventListener('close', onClose);
+        if (this._pendingStreamLifecycle?.socket === socket) {
+          this._pendingStreamLifecycle = null;
+        }
       };
 
       const fail = (error: Error) => {
@@ -544,7 +581,7 @@ export class ASPClient extends EventEmitter<ASPClientEventMap> {
           return;
         }
         settled = true;
-        clearTimeout(timeout);
+        cleanup();
         try {
           socket.close();
         } catch {
@@ -553,7 +590,23 @@ export class ASPClient extends EventEmitter<ASPClientEventMap> {
         reject(error);
       };
 
-      socket.addEventListener('message', (event) => {
+      const finish = () => {
+        if (settled) {
+          return;
+        }
+        if (this._disconnectRequested) {
+          fail(new Error('Inbox stream connect cancelled'));
+          return;
+        }
+        settled = true;
+        if (this._pendingStreamLifecycle?.socket === socket) {
+          this._pendingStreamLifecycle = null;
+        }
+        this._setActiveStreamSocket(socket, cleanup);
+        resolve();
+      };
+
+      const onMessage = (event: MessageEvent<unknown>) => {
         void (async () => {
           const rawText = await readWebSocketMessageText(event.data);
           if (!rawText) {
@@ -604,26 +657,35 @@ export class ASPClient extends EventEmitter<ASPClientEventMap> {
             fail(error instanceof Error ? error : new Error(String(error)));
             return;
           }
-          void this._recoverFromStreamFailure(error instanceof Error ? error : new Error(String(error)));
+          void this._recoverFromStreamFailure(error instanceof Error ? error : new Error(String(error)), socket);
         });
-      });
+      };
 
-      socket.addEventListener('error', () => {
+      const onError = () => {
         const error = new Error('Inbox stream socket error');
         if (!authenticated) {
           fail(error);
           return;
         }
-        void this._recoverFromStreamFailure(error);
-      });
+        void this._recoverFromStreamFailure(error, socket);
+      };
 
-      socket.addEventListener('close', (event) => {
+      const onClose = (event: Event) => {
         if (!authenticated) {
           fail(new Error(`Inbox stream closed before auth (${readCloseCode(event)})`));
           return;
         }
         void this._recoverFromStreamFailure(new Error(`Inbox stream closed (${readCloseCode(event)})`), socket);
-      });
+      };
+
+      timeout = setTimeout(() => {
+        fail(new Error('Inbox stream handshake timed out'));
+      }, DEFAULT_STREAM_HANDSHAKE_TIMEOUT_MS);
+
+      this._pendingStreamLifecycle = { socket, cleanup };
+      socket.addEventListener('message', onMessage);
+      socket.addEventListener('error', onError);
+      socket.addEventListener('close', onClose);
     });
   }
 
@@ -644,7 +706,11 @@ export class ASPClient extends EventEmitter<ASPClientEventMap> {
 
   private async _handleStreamMessage(message: unknown): Promise<void> {
     if (isHostedWsEntryMessage(message)) {
-      this._emitInboxEntry(message.entry);
+      this._emitInboxEntry(message.entry, {
+        cursor: message.cursor,
+        identity: message.identity,
+        replay: message.replay,
+      });
       await this._setDeliveryState({
         cursor: message.cursor,
         since: null,
@@ -668,7 +734,7 @@ export class ASPClient extends EventEmitter<ASPClientEventMap> {
       return;
     }
 
-    this._streamSocket = null;
+    this._clearActiveStreamSocket(socket);
     if (this._disconnectRequested) {
       return;
     }
@@ -684,9 +750,17 @@ export class ASPClient extends EventEmitter<ASPClientEventMap> {
         this._startPolling();
       }
     }
+    this._scheduleStreamReconnect();
   }
 
-  private _emitInboxEntry(entry: InboxEntry): void {
+  private _emitInboxEntry(entry: InboxEntry, metadata: InboxDeliveryMetadata = {}): void {
+    // Inbox stream delivery is at-least-once. Replay and live push can both
+    // surface the same entry around reconnect windows, so the client keeps a
+    // bounded recent-key set and suppresses duplicates best-effort.
+    if (!this._rememberInboxDelivery(entry, metadata)) {
+      return;
+    }
+
     this.emit('entry', entry);
 
     const maybeMessage = inboxEntryToMessage(entry);
@@ -706,6 +780,113 @@ export class ASPClient extends EventEmitter<ASPClientEventMap> {
     if (maybeInteraction) {
       this.emit('interaction', maybeInteraction);
     }
+  }
+
+  private _setActiveStreamSocket(socket: WebSocket, cleanup: () => void): void {
+    this._clearActiveStreamSocket();
+    this._streamSocket = socket;
+    this._streamLifecycle = { socket, cleanup };
+  }
+
+  private _clearActiveStreamSocket(expected: WebSocket | null = null): WebSocket | null {
+    if (expected && this._streamSocket !== expected) {
+      return null;
+    }
+
+    const lifecycle = this._streamLifecycle;
+    this._streamSocket = null;
+    this._streamLifecycle = null;
+    lifecycle?.cleanup();
+    return lifecycle?.socket ?? null;
+  }
+
+  private _closePendingStreamSocket(): void {
+    const lifecycle = this._pendingStreamLifecycle;
+    this._pendingStreamLifecycle = null;
+    if (!lifecycle) {
+      return;
+    }
+
+    lifecycle.cleanup();
+    if (lifecycle.socket.readyState === WebSocket.OPEN || lifecycle.socket.readyState === WebSocket.CONNECTING) {
+      try {
+        lifecycle.socket.close(1000, 'client_disconnect');
+      } catch {
+        // Ignore already-closed sockets.
+      }
+    }
+  }
+
+  private _scheduleStreamReconnect(): void {
+    if (
+      this._disconnectRequested
+      || !this._streamConfig
+      || this._streamReconnectTimer
+      || this._streamSocket
+      || this._pendingStreamLifecycle
+    ) {
+      return;
+    }
+
+    const delay = Math.min(
+      DEFAULT_STREAM_RECONNECT_MAX_MS,
+      DEFAULT_STREAM_RECONNECT_BASE_MS * (2 ** this._streamReconnectAttempt),
+    );
+    this._streamReconnectAttempt += 1;
+    this._streamReconnectTimer = setTimeout(() => {
+      this._streamReconnectTimer = null;
+      void this._retryStreamReconnect();
+    }, delay);
+  }
+
+  private _clearStreamReconnectTimer(): void {
+    if (!this._streamReconnectTimer) {
+      return;
+    }
+    clearTimeout(this._streamReconnectTimer);
+    this._streamReconnectTimer = null;
+  }
+
+  private async _retryStreamReconnect(): Promise<void> {
+    if (
+      this._disconnectRequested
+      || !this._streamConfig
+      || this._streamSocket
+      || this._pendingStreamLifecycle
+    ) {
+      return;
+    }
+
+    const connected = await this._connectStream(this._streamConfig);
+    if (!connected && !this._disconnectRequested) {
+      this._scheduleStreamReconnect();
+    }
+  }
+
+  private _rememberInboxDelivery(entry: InboxEntry, metadata: InboxDeliveryMetadata): boolean {
+    const identity = metadata.identity ?? normalizeAuthHandle(this._manifest.entity.handle);
+    const deliveryKeys = [`${identity}:entry:${entry.id}`];
+    if (metadata.cursor) {
+      deliveryKeys.push(`${identity}:cursor:${metadata.cursor}`);
+    }
+
+    if (deliveryKeys.some((key) => this._recentDeliveryKeys.has(key))) {
+      return false;
+    }
+
+    for (const key of deliveryKeys) {
+      this._recentDeliveryKeys.add(key);
+      this._recentDeliveryOrder.push(key);
+    }
+
+    while (this._recentDeliveryOrder.length > RECENT_DELIVERY_KEY_LIMIT) {
+      const oldest = this._recentDeliveryOrder.shift();
+      if (oldest) {
+        this._recentDeliveryKeys.delete(oldest);
+      }
+    }
+
+    return true;
   }
 
   private async _restoreDeliveryState(): Promise<boolean> {
