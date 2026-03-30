@@ -771,7 +771,7 @@ async function runSocialOnboarding(referrer: string | null, postFlag: string | n
   if (referrer) {
     const display = referrer.startsWith('@') ? referrer : `@${referrer}`;
     console.log(`\n  Following ${display}...`);
-    const followResult = spawnSync('asp', ['follow', referrer], { stdio: 'pipe', encoding: 'utf-8' });
+    const followResult = runAsp(['follow', referrer], false);
     if (followResult.status === 0) {
       console.log(`  ✓ Now following ${display}`);
     } else {
@@ -789,7 +789,7 @@ async function runSocialOnboarding(referrer: string | null, postFlag: string | n
     postText = copy.defaultPost;
   }
 
-  const publishResult = spawnSync('asp', ['publish', postText], { stdio: 'pipe', encoding: 'utf-8' });
+  const publishResult = runAsp(['publish', postText], false);
   if (publishResult.status === 0) {
     console.log('  ✓ Published');
   } else {
@@ -824,13 +824,11 @@ async function main(): Promise<void> {
     let followed: string | null = null;
     if (parsed.referrer) {
       const display = parsed.referrer.startsWith('@') ? parsed.referrer : `@${parsed.referrer}`;
-      const followResult = spawnSync('asp', ['follow', parsed.referrer], { stdio: 'pipe', encoding: 'utf-8' });
-      if (!isAgentMode()) {
-        if (followResult.status === 0) {
-          console.log(`  ✓ Now following ${display}`);
-        } else {
-          console.log(`  Warning: Could not follow ${display}`);
-        }
+      const followResult = runAsp(['follow', parsed.referrer], false);
+      if (followResult.status === 0) {
+        console.log(`  ✓ Now following ${display}`);
+      } else {
+        console.log(`  Warning: Could not follow ${display}`);
       }
       if (followResult.status === 0) followed = parsed.referrer;
     }
