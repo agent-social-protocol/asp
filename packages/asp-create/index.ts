@@ -553,10 +553,9 @@ async function initializeIdentity(args: ParsedArgs): Promise<{
   } else if (process.stdin.isTTY) {
     handle = normalizeHandle(await ask('  Handle: '));
   } else {
-    console.log('\n  Setting up a letus.social identity.');
-    console.log('  Ask the user what handle (username) and display name they would like.');
-    console.log('  Then run: npx -y create-identity --handle <HANDLE> --name "<NAME>"\n');
-    process.exit(0);
+    console.error('  Error: --handle and --name are required for registration.\n');
+    console.error('  Usage: npx -y create-identity --handle <HANDLE> --name "<NAME>"\n');
+    process.exit(1);
   }
   if (!isValidHandle(handle)) {
     console.log(`  Invalid handle "${handle}". Use 3-30 lowercase alphanumeric characters and hyphens.\n`);
