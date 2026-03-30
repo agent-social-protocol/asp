@@ -851,29 +851,17 @@ async function main(): Promise<void> {
     const currentEndpoint = currentManifest?.entity?.id ?? endpoint;
     const actions = getAgentActions();
 
-    if (isAgentMode()) {
-      outputJson({
-        status: 'already_registered',
-        handle,
-        endpoint: currentEndpoint,
-        profile: copy.renderProfileLocation(currentEndpoint, handle),
-        ...(followed ? { followed } : {}),
-        actions,
-        _agent_hint: 'Present the actions above to the user as available commands they can ask you to run.',
-      });
-    } else {
-      const shareTarget = renderShareTarget(currentEndpoint, handle);
-      const profileLocation = copy.renderProfileLocation(currentEndpoint, handle);
-      console.log(`\n  You already have an identity: ${shareTarget}`);
-      if (profileLocation) {
-        console.log(`  Profile: ${profileLocation}`);
-      }
-      if (actions.length > 0) {
-        console.log('\n  What would you like to do?\n');
-        actions.forEach((a) => console.log(`    ${a.command}  — ${a.description}`));
-      }
-      console.log('');
+    const shareTarget = renderShareTarget(currentEndpoint, handle);
+    const profileLocation = copy.renderProfileLocation(currentEndpoint, handle);
+    console.log(`\n  You already have an identity: ${shareTarget}`);
+    if (profileLocation) {
+      console.log(`  Profile: ${profileLocation}`);
     }
+    if (actions.length > 0) {
+      console.log('\n  Tell the user they are already registered and present these available commands:\n');
+      actions.forEach((a) => console.log(`    ${a.command}  — ${a.description}`));
+    }
+    console.log('');
     return;
   }
   console.log('');
