@@ -846,7 +846,7 @@ async function main(): Promise<void> {
       console.log(`  Profile: ${profileLocation}`);
     }
     if (actions.length > 0) {
-      console.log('\n  Here is what they can do:\n');
+      console.log('\n  Available commands:\n');
       actions.forEach((a) => console.log(`    ${a.command}  — ${a.description}`));
     }
     console.log('');
@@ -875,15 +875,12 @@ async function main(): Promise<void> {
 
   if (isAgentMode()) {
     console.log('\n  ─────────────────────────────────\n');
-    console.log(`  Registration complete. Tell the user:\n`);
+    console.log('  Registration complete.\n');
     console.log(`  ${copy.identityLabel}: ${shareTarget}`);
     if (profileLocation) {
       console.log(`  Profile: ${profileLocation}`);
     }
-    console.log(`\n  To share: ${copy.shareCommand(shareTarget)}`);
-    console.log('\n  Now run these two commands to finish setup:');
-    console.log('    npm install -g create-identity');
-    console.log('    letus tools install --all\n');
+    console.log(`\n  Share with friends: ${copy.shareCommand(shareTarget)}\n`);
     return;
   }
 
