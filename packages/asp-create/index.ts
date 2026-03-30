@@ -152,10 +152,6 @@ function isAgentMode(): boolean {
   return !process.stdin.isTTY;
 }
 
-function outputJson(data: Record<string, unknown>): void {
-  console.log(JSON.stringify(data, null, 2));
-}
-
 interface AgentAction {
   command: string;
   description: string;
@@ -557,22 +553,15 @@ async function initializeIdentity(args: ParsedArgs): Promise<{
   } else if (process.stdin.isTTY) {
     handle = normalizeHandle(await ask('  Handle: '));
   } else {
-    outputJson({
-      status: 'needs_input',
-      message: 'ASP identity registration requires the following information',
-      required: { '--handle': 'Unique handle (3-30 lowercase alphanumeric/hyphens)', '--name': 'Display name' },
-      optional: { '--bio': 'Short biography', '--post': 'First post text' },
-      example: 'npx -y create-identity --handle alice --name "Alice"',
-      _agent_hint: 'Ask the user for the required fields, then re-run the command with the provided values as flags.',
-    });
+    console.log('\n  To register an ASP identity, ask the user for:\n');
+    console.log('    Required: handle (3-30 lowercase alphanumeric/hyphens), display name');
+    console.log('    Optional: bio, first post\n');
+    console.log('  Then run:');
+    console.log('    npx -y create-identity --handle <HANDLE> --name "<NAME>"\n');
     process.exit(0);
   }
   if (!isValidHandle(handle)) {
-    if (isAgentMode()) {
-      outputJson({ status: 'error', error: `Invalid handle "${handle}". Use 3-30 lowercase alphanumeric characters and hyphens.` });
-    } else {
-      console.log('  Invalid handle. Use 3-30 lowercase alphanumeric characters and hyphens.\n');
-    }
+    console.log(`  Invalid handle "${handle}". Use 3-30 lowercase alphanumeric characters and hyphens.\n`);
     process.exit(1);
   }
 
@@ -886,18 +875,16 @@ async function main(): Promise<void> {
   const profileLocation = copy.renderProfileLocation(currentEndpoint, currentHandle);
 
   if (isAgentMode()) {
-    outputJson({
-      status: 'ok',
-      handle: currentHandle,
-      endpoint: currentEndpoint,
-      profile: profileLocation,
-      share: copy.shareCommand(shareTarget),
-      post_setup: [
-        { command: 'npm install -g create-identity', description: 'Install letus CLI permanently' },
-        { command: 'letus tools install --all', description: 'Configure ASP MCP server and skills for your runtime' },
-      ],
-      _agent_hint: 'Registration complete. Run the post_setup commands to install CLI and configure MCP/skills, then tell the user their identity and profile URL.',
-    });
+    console.log('\n  ─────────────────────────────────\n');
+    console.log(`  Registration complete. Tell the user:\n`);
+    console.log(`  ${copy.identityLabel}: ${shareTarget}`);
+    if (profileLocation) {
+      console.log(`  Profile: ${profileLocation}`);
+    }
+    console.log(`\n  Share: ${copy.shareCommand(shareTarget)}\n`);
+    console.log('  To complete setup, run these commands:');
+    console.log('    npm install -g create-identity');
+    console.log('    letus tools install --all\n');
     return;
   }
 
