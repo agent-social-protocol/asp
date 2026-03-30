@@ -2,6 +2,8 @@ import type { InboxEntry } from '../models/inbox-entry.js';
 import { buildEndpointUrl } from './endpoint-url.js';
 import { fetchWithTimeout } from './fetch-with-timeout.js';
 
+const SEND_ENTRY_TIMEOUT_MS = 8_000;
+
 export async function sendEntry(endpointUrl: string, entry: InboxEntry): Promise<{ ok: boolean; error?: string }> {
   try {
     const url = buildEndpointUrl(endpointUrl, '/asp/inbox');
@@ -9,7 +11,7 @@ export async function sendEntry(endpointUrl: string, entry: InboxEntry): Promise
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(entry),
-    });
+    }, SEND_ENTRY_TIMEOUT_MS);
     if (!res.ok) {
       return { ok: false, error: `HTTP ${res.status}` };
     }
