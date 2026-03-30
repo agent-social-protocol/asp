@@ -82,6 +82,7 @@ interface HostedWsErrorMessage {
 interface StreamSocketLifecycle {
   socket: WebSocket;
   cleanup: () => void;
+  cancel?: (error: Error) => void;
 }
 
 interface InboxDeliveryMetadata {
@@ -682,7 +683,11 @@ export class ASPClient extends EventEmitter<ASPClientEventMap> {
         fail(new Error('Inbox stream handshake timed out'));
       }, DEFAULT_STREAM_HANDSHAKE_TIMEOUT_MS);
 
-      this._pendingStreamLifecycle = { socket, cleanup };
+      this._pendingStreamLifecycle = {
+        socket,
+        cleanup,
+        cancel: fail,
+      };
       socket.addEventListener('message', onMessage);
       socket.addEventListener('error', onError);
       socket.addEventListener('close', onClose);
@@ -804,6 +809,11 @@ export class ASPClient extends EventEmitter<ASPClientEventMap> {
     const lifecycle = this._pendingStreamLifecycle;
     this._pendingStreamLifecycle = null;
     if (!lifecycle) {
+      return;
+    }
+
+    if (lifecycle.cancel) {
+      lifecycle.cancel(new Error('Inbox stream connect cancelled'));
       return;
     }
 

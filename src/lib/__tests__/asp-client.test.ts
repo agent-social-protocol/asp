@@ -880,6 +880,53 @@ describe('ASPClient', () => {
         vi.useRealTimers();
       }
     });
+
+    it('cancels an in-flight websocket handshake on disconnect and allows reconnect', async () => {
+      enableStreamCapability(tmpDir);
+      MockStreamWebSocket.instances = [];
+      vi.stubGlobal('WebSocket', MockStreamWebSocket as any);
+      vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string) => {
+        if (String(url).includes('/asp/inbox')) {
+          return Promise.resolve({
+            ok: true,
+            json: () => Promise.resolve({
+              entries: [],
+              next_cursor: null,
+            }),
+          });
+        }
+        return Promise.resolve({ ok: false });
+      }));
+
+      const client = new ASPClient({ identityDir: tmpDir });
+      const firstConnect = client.connect();
+      await vi.waitFor(() => {
+        expect(MockStreamWebSocket.instances).toHaveLength(1);
+      });
+      const firstSocket = MockStreamWebSocket.instances[0];
+      expect(firstSocket.listenerCount('message')).toBeGreaterThan(0);
+
+      client.disconnect();
+      await expect(firstConnect).resolves.toBeUndefined();
+      expect(firstSocket.listenerCount('message')).toBe(0);
+      expect(firstSocket.listenerCount('error')).toBe(0);
+      expect(firstSocket.listenerCount('close')).toBe(0);
+
+      const secondConnect = client.connect();
+      await vi.waitFor(() => {
+        expect(MockStreamWebSocket.instances).toHaveLength(2);
+      });
+      const secondSocket = MockStreamWebSocket.instances[1];
+      secondSocket.emitMessage({ type: 'challenge', nonce: 'nonce-2' });
+      await vi.waitFor(() => {
+        expect(secondSocket.sent).toHaveLength(1);
+      });
+      secondSocket.emitMessage({ type: 'auth_ok', resumed_from_cursor: null });
+
+      await secondConnect;
+      expect(client.connected).toBe(true);
+      client.disconnect();
+    });
   });
 
   describe('API methods', () => {
