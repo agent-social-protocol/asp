@@ -39,6 +39,120 @@ function makeTempIdentity(): {
   return { dir, manifest, privateKey: keys.privateKey, encPrivateKey: encKeys.privateKey };
 }
 
+type WebSocketListener = (event: any) => void;
+
+class RejectingWebSocket {
+  static CONNECTING = 0;
+  static OPEN = 1;
+  static CLOSING = 2;
+  static CLOSED = 3;
+
+  readyState = RejectingWebSocket.CONNECTING;
+  private listeners = new Map<string, WebSocketListener[]>();
+
+  constructor(_url: string) {
+    queueMicrotask(() => {
+      this.readyState = RejectingWebSocket.CLOSED;
+      this.dispatch('error', new Event('error'));
+      this.dispatch('close', { code: 1011 });
+    });
+  }
+
+  addEventListener(type: string, listener: WebSocketListener) {
+    const bucket = this.listeners.get(type) ?? [];
+    bucket.push(listener);
+    this.listeners.set(type, bucket);
+  }
+
+  removeEventListener(type: string, listener: WebSocketListener) {
+    const bucket = this.listeners.get(type) ?? [];
+    this.listeners.set(type, bucket.filter((entry) => entry !== listener));
+  }
+
+  send(_data: string) {}
+
+  close(code = 1000) {
+    this.readyState = RejectingWebSocket.CLOSED;
+    this.dispatch('close', { code });
+  }
+
+  private dispatch(type: string, event: any) {
+    for (const listener of this.listeners.get(type) ?? []) {
+      listener(event);
+    }
+  }
+}
+
+class MockStreamWebSocket {
+  static CONNECTING = 0;
+  static OPEN = 1;
+  static CLOSING = 2;
+  static CLOSED = 3;
+  static instances: MockStreamWebSocket[] = [];
+
+  readonly sent: string[] = [];
+  readonly url: string;
+  readyState = MockStreamWebSocket.CONNECTING;
+  private listeners = new Map<string, WebSocketListener[]>();
+
+  constructor(url: string) {
+    this.url = url;
+    MockStreamWebSocket.instances.push(this);
+  }
+
+  addEventListener(type: string, listener: WebSocketListener) {
+    const bucket = this.listeners.get(type) ?? [];
+    bucket.push(listener);
+    this.listeners.set(type, bucket);
+  }
+
+  removeEventListener(type: string, listener: WebSocketListener) {
+    const bucket = this.listeners.get(type) ?? [];
+    this.listeners.set(type, bucket.filter((entry) => entry !== listener));
+  }
+
+  send(data: string) {
+    this.sent.push(data);
+  }
+
+  close(code = 1000) {
+    this.readyState = MockStreamWebSocket.CLOSED;
+    this.dispatch('close', { code });
+  }
+
+  emitOpen() {
+    this.readyState = MockStreamWebSocket.OPEN;
+    this.dispatch('open', new Event('open'));
+  }
+
+  emitMessage(payload: unknown) {
+    this.dispatch('message', {
+      data: JSON.stringify(payload),
+    });
+  }
+
+  emitError() {
+    this.dispatch('error', new Event('error'));
+  }
+
+  private dispatch(type: string, event: any) {
+    for (const listener of this.listeners.get(type) ?? []) {
+      listener(event);
+    }
+  }
+}
+
+function enableStreamCapability(dir: string): void {
+  const manifestPath = path.join(dir, 'manifest.yaml');
+  const parsed = yaml.load(fs.readFileSync(manifestPath, 'utf-8')) as Manifest;
+  parsed.capabilities = [...new Set([...(parsed.capabilities ?? []), 'stream'])];
+  parsed.endpoints = {
+    ...parsed.endpoints,
+    stream: '/asp/ws',
+  };
+  fs.writeFileSync(manifestPath, yaml.dump(parsed), 'utf-8');
+}
+
 describe('ASPClient', () => {
   let tmpDir: string;
   let manifest: Manifest;
@@ -164,6 +278,7 @@ describe('ASPClient', () => {
   describe('connect/disconnect', () => {
     beforeEach(() => {
       vi.useFakeTimers();
+      vi.stubGlobal('WebSocket', RejectingWebSocket as any);
     });
 
     afterEach(() => {
@@ -432,6 +547,131 @@ describe('ASPClient', () => {
       expect(received.length).toBe(countAfterFirst); // no new events
 
       vi.unstubAllGlobals();
+    });
+  });
+
+  describe('stream delivery', () => {
+    it('authenticates over websocket and emits live inbox entries', async () => {
+      enableStreamCapability(tmpDir);
+      MockStreamWebSocket.instances = [];
+      vi.stubGlobal('WebSocket', MockStreamWebSocket as any);
+
+      const client = new ASPClient({ identityDir: tmpDir });
+      const received: Message[] = [];
+      client.on('message', (message) => received.push(message));
+
+      const connectPromise = client.connect();
+      await vi.waitFor(() => {
+        expect(MockStreamWebSocket.instances).toHaveLength(1);
+      });
+      const socket = MockStreamWebSocket.instances[0];
+      expect(socket?.url).toBe('wss://alice.asp.social/asp/ws');
+
+      socket.emitMessage({ type: 'challenge', nonce: 'nonce-123' });
+      await vi.waitFor(() => {
+        expect(socket.sent).toHaveLength(1);
+      });
+      expect(JSON.parse(socket.sent[0])).toMatchObject({
+        type: 'auth',
+        handle: 'alice',
+        nonce: 'nonce-123',
+      });
+
+      socket.emitMessage({ type: 'auth_ok', resumed_from_cursor: null });
+      await connectPromise;
+
+      socket.emitMessage({
+        type: 'entry',
+        cursor: '2026-03-30T12:00:00.000Z|42',
+        entry: {
+          id: 'msg-1',
+          from: 'https://bob.asp.social',
+          to: 'https://alice.asp.social',
+          kind: 'message',
+          type: 'chat',
+          timestamp: '2026-03-30T12:00:00.000Z',
+          received_at: '2026-03-30T12:00:00.000Z',
+          content: { text: 'Hello from WS' },
+          initiated_by: 'agent',
+        },
+      });
+
+      await vi.waitFor(() => {
+        expect(received).toHaveLength(1);
+      });
+      expect(received[0].content.text).toBe('Hello from WS');
+      await vi.waitFor(() => {
+        const cursorState = JSON.parse(
+          fs.readFileSync(path.join(tmpDir, '.runtime', 'inbox-stream.json'), 'utf-8'),
+        ) as { cursor: string };
+        expect(cursorState.cursor).toBe('2026-03-30T12:00:00.000Z|42');
+      });
+
+      client.disconnect();
+    });
+
+    it('reuses the persisted cursor when reconnecting the websocket stream', async () => {
+      enableStreamCapability(tmpDir);
+      MockStreamWebSocket.instances = [];
+      vi.stubGlobal('WebSocket', MockStreamWebSocket as any);
+
+      const firstClient = new ASPClient({ identityDir: tmpDir });
+      const firstConnect = firstClient.connect();
+      await vi.waitFor(() => {
+        expect(MockStreamWebSocket.instances).toHaveLength(1);
+      });
+      const firstSocket = MockStreamWebSocket.instances[0];
+
+      firstSocket.emitMessage({ type: 'challenge', nonce: 'nonce-1' });
+      await vi.waitFor(() => {
+        expect(firstSocket.sent).toHaveLength(1);
+      });
+      firstSocket.emitMessage({ type: 'auth_ok', resumed_from_cursor: null });
+      await firstConnect;
+
+      firstSocket.emitMessage({
+        type: 'entry',
+        cursor: '2026-03-30T12:00:00.000Z|42',
+        entry: {
+          id: 'msg-1',
+          from: 'https://bob.asp.social',
+          to: 'https://alice.asp.social',
+          kind: 'message',
+          type: 'chat',
+          timestamp: '2026-03-30T12:00:00.000Z',
+          received_at: '2026-03-30T12:00:00.000Z',
+          content: { text: 'First session' },
+          initiated_by: 'agent',
+        },
+      });
+      await vi.waitFor(() => {
+        const cursorState = JSON.parse(
+          fs.readFileSync(path.join(tmpDir, '.runtime', 'inbox-stream.json'), 'utf-8'),
+        ) as { cursor: string };
+        expect(cursorState.cursor).toBe('2026-03-30T12:00:00.000Z|42');
+      });
+      firstClient.disconnect();
+
+      const secondClient = new ASPClient({ identityDir: tmpDir });
+      const secondConnect = secondClient.connect();
+      await vi.waitFor(() => {
+        expect(MockStreamWebSocket.instances).toHaveLength(2);
+      });
+      const secondSocket = MockStreamWebSocket.instances[1];
+
+      secondSocket.emitMessage({ type: 'challenge', nonce: 'nonce-2' });
+      await vi.waitFor(() => {
+        expect(secondSocket.sent).toHaveLength(1);
+      });
+      const secondAuth = JSON.parse(secondSocket.sent[0]) as { cursor?: string };
+      expect(secondAuth.cursor).toBe('2026-03-30T12:00:00.000Z|42');
+
+      secondSocket.emitMessage({
+        type: 'auth_ok',
+        resumed_from_cursor: '2026-03-30T12:00:00.000Z|42',
+      });
+      await secondConnect;
+      secondClient.disconnect();
     });
   });
 
