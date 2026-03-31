@@ -32,8 +32,9 @@ PROFILE AND GRAPH
   Unfollow and following-list are currently CLI-only.
 
 IDENTITY
-  Identity list/summary is available through CLI and MCP resources.
-  CLI identity choice is explicit by default.
+  Multi-identity list/summary is available through MCP resources.
+  The reference shell CLI usually operates on one local identity store.
+  Identity choice is explicit by default.
 
 Use this command when surface availability is unclear and you need to decide
 between CLI, MCP, or host-native wrappers.

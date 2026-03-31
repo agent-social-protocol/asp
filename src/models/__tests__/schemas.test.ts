@@ -111,5 +111,7 @@ describe('protocol schemas', () => {
     expect(result.data?.contract).toBe('asp-surfaces/1');
     expect(result.data?.notifications.kind).toBe('local-aggregate');
     expect(result.data?.inbox.manifest_capability).toBe('inbox');
+    expect(result.data?.identity.list.exposure.cli).toBe(false);
+    expect(result.data?.identity.list.exposure.mcp).toBe(true);
   });
 });

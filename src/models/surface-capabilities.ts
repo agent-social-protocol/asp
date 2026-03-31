@@ -203,15 +203,15 @@ export const REFERENCE_SURFACE_CAPABILITIES: SurfaceCapabilities = {
       manifest_capability: null,
       endpoint: null,
       exposure: {
-        cli: true,
+        cli: false,
         mcp: true,
         native: false,
       },
-      notes: 'Local identity listing and summaries are exposed through CLI and MCP resources in the reference distribution.',
+      notes: 'Multi-identity listing and summaries are exposed through MCP resources in the reference distribution. The reference shell CLI typically operates on one local identity store rather than a multi-identity list surface.',
     },
     select: {
       mode: 'explicit',
-      notes: 'The reference CLI uses explicit identity selection. MCP hosts may additionally support elicitation, but agents should not assume it is available unless the host exposes it.',
+      notes: 'The reference CLI typically targets one explicit local identity store. MCP hosts may additionally expose multiple identities and elicitation, but agents should not assume that is available unless the host exposes it.',
     },
   },
 };
