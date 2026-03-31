@@ -6,15 +6,13 @@
 //   asp-mcp --identity ~/.asp/primary --identity ~/.asp/dating  # multi
 
 import { parseArgs } from 'node:util';
-import { readFileSync, existsSync } from 'node:fs';
-import { join, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { existsSync } from 'node:fs';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { ASPClient } from '../src/lib/asp-client.js';
 import { getCliRuntimeConfig } from '../src/config/cli.js';
 import { createASPMCPServer } from '../src/mcp/server.js';
+import { readPackageVersion } from '../src/utils/package-version.js';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
 const USAGE = `Usage: asp-mcp [options]
 
 Start the ASP MCP server over stdio
@@ -23,22 +21,6 @@ Options:
   --identity <path>    Load an ASP identity directory (can be passed multiple times)
   --version            Print version
   -h, --help           Show help`;
-
-function readVersion(): string {
-  const packageJsonPaths = [
-    join(__dirname, '../package.json'),
-    join(__dirname, '../../package.json'),
-  ];
-
-  for (const packageJsonPath of packageJsonPaths) {
-    if (existsSync(packageJsonPath)) {
-      const { version } = JSON.parse(readFileSync(packageJsonPath, 'utf-8')) as { version: string };
-      return version;
-    }
-  }
-
-  throw new Error('Could not locate package.json');
-}
 
 function parseCliArgs() {
   try {
@@ -65,7 +47,7 @@ if (values.help) {
 }
 
 if (values.version) {
-  const version = readVersion();
+  const version = readPackageVersion(import.meta.url);
   process.stdout.write(`${version}\n`);
   process.exit(0);
 }
@@ -105,7 +87,7 @@ if (clients.size === 0) {
 }
 
 // 3. Start MCP Server
-const version = readVersion();
+const version = readPackageVersion(import.meta.url);
 const server = createASPMCPServer(clients, { version });
 const transport = new StdioServerTransport();
 await server.connect(transport);

@@ -1,6 +1,8 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import { readPackageVersion } from '../utils/package-version.js';
 
 interface RootPackageJson {
   bin?: Record<string, string>;
@@ -29,5 +31,21 @@ describe('package boundary', () => {
 
     expect(pkg.dependencies?.['better-sqlite3']).toBeUndefined();
     expect(pkg.devDependencies?.['better-sqlite3']).toBeTruthy();
+  });
+
+  it('resolves package version from both source and dist-style entrypoints', () => {
+    const expectedVersion = JSON.parse(
+      readFileSync(join(process.cwd(), 'package.json'), 'utf-8'),
+    ) as { version: string };
+
+    const sourceCliUrl = pathToFileURL(join(process.cwd(), 'src', 'cli.ts')).href;
+    const distCliUrl = pathToFileURL(join(process.cwd(), 'dist', 'src', 'cli.js')).href;
+    const sourceMcpUrl = pathToFileURL(join(process.cwd(), 'bin', 'asp-mcp.ts')).href;
+    const distMcpUrl = pathToFileURL(join(process.cwd(), 'dist', 'bin', 'asp-mcp.js')).href;
+
+    expect(readPackageVersion(sourceCliUrl)).toBe(expectedVersion.version);
+    expect(readPackageVersion(distCliUrl)).toBe(expectedVersion.version);
+    expect(readPackageVersion(sourceMcpUrl)).toBe(expectedVersion.version);
+    expect(readPackageVersion(distMcpUrl)).toBe(expectedVersion.version);
   });
 });
