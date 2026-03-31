@@ -14,12 +14,14 @@ import { fetchFeed } from '../utils/fetch-feed.js';
 import { isManifest, type Manifest } from '../models/manifest.js';
 import { buildEndpointUrl } from '../utils/endpoint-url.js';
 import { readBehavior } from '../store/behavior-store.js';
+import { REFERENCE_SURFACE_CAPABILITIES } from '../models/surface-capabilities.js';
 import {
   ASP_MCP_INSTRUCTIONS,
   TOOL_DEFINITIONS,
 } from './tools.js';
 
 const IDENTITIES_RESOURCE_URI = 'asp://identities';
+const RUNTIME_CAPABILITIES_RESOURCE_URI = 'asp://runtime/capabilities';
 
 function normalizeIdentity(identity?: string): string | undefined {
   return identity?.trim().replace(/^@/, '') || undefined;
@@ -406,6 +408,23 @@ export function createASPMCPServer(
       },
     );
   };
+
+  server.registerResource(
+    'asp-runtime-capabilities',
+    RUNTIME_CAPABILITIES_RESOURCE_URI,
+    {
+      title: 'ASP Runtime Capabilities',
+      description: 'Canonical machine-readable reference surface capability contract for the current ASP distribution. Use this to decide between CLI, MCP, and host-native surfaces when availability is unclear.',
+      mimeType: 'application/json',
+    },
+    async (uri) => ({
+      contents: [{
+        uri: uri.toString(),
+        mimeType: 'application/json',
+        text: JSON.stringify(REFERENCE_SURFACE_CAPABILITIES),
+      }],
+    }),
+  );
 
   server.registerResource(
     'asp-identities',

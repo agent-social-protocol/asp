@@ -202,6 +202,7 @@ describe('ASP MCP server', () => {
 
     const resources = await client.listResources();
     const uris = resources.resources.map((resource) => resource.uri);
+    expect(uris).toContain('asp://runtime/capabilities');
     expect(uris).toContain('asp://identities');
     expect(uris).toContain('asp://identity/alice/summary');
     expect(uris).toContain('asp://identity/alice/manifest');
@@ -212,6 +213,28 @@ describe('ASP MCP server', () => {
     expect(templateUris).toContain('asp://identity/{handle}/summary');
     expect(templateUris).toContain('asp://identity/{handle}/manifest');
     expect(templateUris).toContain('asp://identity/{handle}/inbox');
+
+    await cleanup();
+  });
+
+  it('reads the runtime capabilities resource', async () => {
+    const alice = makeTempIdentity('@alice', 'Alice');
+    tempDirs.push(alice.dir);
+
+    const { client, cleanup } = await createTestPair(
+      new Map([['alice', new ASPClientImpl({ identityDir: alice.dir })]]),
+    );
+
+    const result = await client.readResource({ uri: 'asp://runtime/capabilities' });
+    const payload = JSON.parse(result.contents[0].text) as {
+      contract: string;
+      notifications: { kind: string };
+      inbox: { exposure: { mcp: boolean } };
+    };
+
+    expect(payload.contract).toBe('asp-surfaces/1');
+    expect(payload.notifications.kind).toBe('local-aggregate');
+    expect(payload.inbox.exposure.mcp).toBe(true);
 
     await cleanup();
   });
