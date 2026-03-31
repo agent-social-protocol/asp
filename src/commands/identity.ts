@@ -55,7 +55,7 @@ const identityEditCommand = new Command('edit')
       return;
     }
 
-    const manifest = await readManifest();
+    const manifest = await readManifest({ autoMigrate: false });
     if (!manifest) {
       output(json ? { error: 'Manifest not found' } : 'Manifest not found. Run `asp init` first.', json);
       process.exitCode = 1;
@@ -237,7 +237,7 @@ const identityMigrateHostedEndpointCommand = new Command('migrate-hosted-endpoin
       return;
     }
 
-    const manifest = await readManifest();
+    const manifest = await readManifest({ autoMigrate: false });
     if (!manifest) {
       output(json ? { error: 'Manifest not found' } : 'Manifest not found. Run `asp init` first.', json);
       process.exitCode = 1;

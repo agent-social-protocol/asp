@@ -172,6 +172,7 @@ describe('identity migrate-hosted-endpoint', () => {
     const manifest = makeLegacyHostedManifest();
     const {
       identityCommand,
+      readManifest,
       writeManifest,
       syncHostedManifestTargets,
     } = await loadIdentityCommand({ manifest });
@@ -182,6 +183,7 @@ describe('identity migrate-hosted-endpoint', () => {
       'migrate-hosted-endpoint',
     ], { from: 'user' });
 
+    expect(readManifest).toHaveBeenCalledWith({ autoMigrate: false });
     expect(writeManifest).toHaveBeenCalledTimes(1);
     const updatedManifest = writeManifest.mock.calls[0][0] as Manifest;
     expect(updatedManifest.entity.id).toBe('https://alice.asp.social');

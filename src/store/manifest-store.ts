@@ -4,16 +4,27 @@ import { loadYaml, dumpYaml } from '../utils/yaml.js';
 import type { Manifest } from '../models/manifest.js';
 import { migrateLegacyHostedManifest } from '../hosted/manifest-migration.js';
 
-export async function readManifest(): Promise<Manifest | null> {
+async function loadManifestFromStore(): Promise<Manifest | null> {
   const { manifestPath } = getStorePaths();
   if (!existsSync(manifestPath)) return null;
-  const manifest = await loadYaml<Manifest>(manifestPath);
+  return loadYaml<Manifest>(manifestPath);
+}
+
+export async function readManifest(
+  options: { autoMigrate?: boolean } = {},
+): Promise<Manifest | null> {
+  const manifest = await loadManifestFromStore();
+  if (!manifest) return null;
+  if (options.autoMigrate === false) {
+    return manifest;
+  }
+
   const migration = migrateLegacyHostedManifest(manifest);
   if (!migration.ok) {
     throw new Error(migration.error);
   }
   if (migration.updated) {
-    await dumpYaml(manifestPath, manifest);
+    await dumpYaml(getStorePaths().manifestPath, manifest);
   }
   return manifest;
 }

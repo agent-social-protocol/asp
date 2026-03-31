@@ -1,11 +1,7 @@
-import { buildHostedEndpoint } from '../config/hosted.js';
+import { buildHostedEndpoint, normalizeHandle } from '../config/hosted.js';
 import type { Manifest } from '../models/manifest.js';
 
 const LEGACY_HOSTED_DOMAINS = ['letus.social'] as const;
-
-function normalizeHandleValue(handle: string): string {
-  return handle.replace(/^@/, '').trim();
-}
 
 function parseLegacyHostedEndpoint(endpoint: string): { handle: string; domain: string } | null {
   try {
@@ -19,7 +15,12 @@ function parseLegacyHostedEndpoint(endpoint: string): { handle: string; domain: 
         };
       }
     }
-  } catch {}
+  } catch (error) {
+    if (error instanceof TypeError) {
+      return null;
+    }
+    throw error;
+  }
 
   return null;
 }
@@ -43,7 +44,7 @@ export function migrateLegacyHostedManifest(
     return { ok: true, updated: false, rewrittenEndpointFields: [] };
   }
 
-  const normalizedHandle = normalizeHandleValue(manifest.entity.handle);
+  const normalizedHandle = normalizeHandle(manifest.entity.handle).trim();
   if (!normalizedHandle) {
     return { ok: false, error: 'Local manifest is missing a hosted handle.' };
   }
