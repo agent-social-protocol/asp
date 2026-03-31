@@ -183,6 +183,31 @@ describe('ASPClient', () => {
       expect(m.entity.id).toBe('https://alice.asp.social');
     });
 
+    it('auto-migrates a legacy letus.social hosted manifest before loading the client', async () => {
+      const legacyManifest = {
+        ...manifest,
+        entity: {
+          ...manifest.entity,
+          id: 'https://alice.letus.social',
+        },
+        endpoints: {
+          ...manifest.endpoints,
+          feed: 'https://alice.letus.social/asp/feed',
+          inbox: 'https://alice.letus.social/asp/inbox',
+        },
+      };
+      fs.writeFileSync(path.join(tmpDir, 'manifest.yaml'), yaml.dump(legacyManifest));
+
+      const client = new ASPClient({ identityDir: tmpDir });
+      const loaded = await client.getManifest();
+      const persisted = yaml.load(fs.readFileSync(path.join(tmpDir, 'manifest.yaml'), 'utf-8')) as Manifest;
+
+      expect(loaded.entity.id).toBe('https://alice.asp.social');
+      expect(loaded.endpoints.feed).toBe('https://alice.asp.social/asp/feed');
+      expect(loaded.endpoints.inbox).toBe('https://alice.asp.social/asp/inbox');
+      expect(persisted.entity.id).toBe('https://alice.asp.social');
+    });
+
     it('exposes nodeUrl from manifest entity.id', async () => {
       const client = new ASPClient({ identityDir: tmpDir });
       expect(await client.getNodeUrl()).toBe('https://alice.asp.social');

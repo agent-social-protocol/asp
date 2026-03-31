@@ -27,6 +27,21 @@ function makeHostedManifest(): Manifest {
   };
 }
 
+function makeLegacyHostedManifest(): Manifest {
+  return {
+    ...makeHostedManifest(),
+    entity: {
+      ...makeHostedManifest().entity,
+      id: 'https://alice.letus.social',
+    },
+    endpoints: {
+      feed: 'https://alice.letus.social/asp/feed',
+      inbox: 'https://alice.letus.social/asp/inbox',
+      stream: 'https://alice.letus.social/asp/ws',
+    },
+  };
+}
+
 async function loadIdentityCommand(mocks: {
   manifest: Manifest;
   syncResult?: {
@@ -149,5 +164,33 @@ describe('identity edit', () => {
     expect(output).toHaveBeenCalledTimes(1);
     expect(output.mock.calls[0][0]).toContain(expected);
     expect(process.exitCode).toBe(1);
+  });
+});
+
+describe('identity migrate-hosted-endpoint', () => {
+  it('rewrites a legacy letus.social hosted identity to the canonical asp.social endpoint and syncs it', async () => {
+    const manifest = makeLegacyHostedManifest();
+    const {
+      identityCommand,
+      writeManifest,
+      syncHostedManifestTargets,
+    } = await loadIdentityCommand({ manifest });
+
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    await identityCommand.parseAsync([
+      'migrate-hosted-endpoint',
+    ], { from: 'user' });
+
+    expect(writeManifest).toHaveBeenCalledTimes(1);
+    const updatedManifest = writeManifest.mock.calls[0][0] as Manifest;
+    expect(updatedManifest.entity.id).toBe('https://alice.asp.social');
+    expect(updatedManifest.endpoints).toEqual({
+      feed: 'https://alice.asp.social/asp/feed',
+      inbox: 'https://alice.asp.social/asp/inbox',
+      stream: 'https://alice.asp.social/asp/ws',
+    });
+    expect(syncHostedManifestTargets).toHaveBeenCalledWith(updatedManifest);
+    expect(process.exitCode).toBeUndefined();
   });
 });

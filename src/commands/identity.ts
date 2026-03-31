@@ -5,7 +5,8 @@ import { prompt, closePrompts } from '../utils/prompts.js';
 import { output } from '../utils/output.js';
 import { getHostedRuntimeConfig, isHostedEndpoint } from '../config/hosted.js';
 import { syncHostedManifestTargets } from '../hosted/onboarding.js';
-import type { EntityType, Relationship } from '../models/manifest.js';
+import { migrateLegacyHostedManifest } from '../hosted/manifest-migration.js';
+import type { EntityType, Manifest, Relationship } from '../models/manifest.js';
 
 function parseCsv(input: string): string[] {
   return input
@@ -225,6 +226,85 @@ const identityEditCommand = new Command('edit')
     }
   });
 
+const identityMigrateHostedEndpointCommand = new Command('migrate-hosted-endpoint')
+  .description('Migrate a legacy hosted .letus.social identity to the canonical hosted endpoint')
+  .action(async (_opts, cmd) => {
+    const json = cmd.optsWithGlobals().json;
+
+    if (!storeInitialized()) {
+      output(json ? { error: 'Not initialized' } : 'Not initialized. Run `asp init` first.', json);
+      process.exitCode = 1;
+      return;
+    }
+
+    const manifest = await readManifest();
+    if (!manifest) {
+      output(json ? { error: 'Manifest not found' } : 'Manifest not found. Run `asp init` first.', json);
+      process.exitCode = 1;
+      return;
+    }
+
+    const migration = migrateLegacyHostedManifest(manifest);
+    if (!migration.ok) {
+      output(json ? { error: migration.error } : migration.error, json);
+      process.exitCode = 1;
+      return;
+    }
+
+    if (!migration.updated) {
+      if (json) {
+        output({
+          status: 'unchanged',
+          endpoint: manifest.entity.id,
+        }, true);
+        return;
+      }
+
+      console.log('\nHosted endpoint already uses the canonical domain.');
+      console.log(`  Endpoint:  ${manifest.entity.id}`);
+      return;
+    }
+
+    await writeManifest(manifest);
+    const syncResults = await syncHostedManifestTargets(manifest);
+    if (!syncResults.hubResult?.ok || syncResults.indexResults.some((result) => !result.ok)) {
+      process.exitCode = 1;
+    }
+
+    if (json) {
+      output({
+        status: 'migrated',
+        previous_endpoint: migration.previousEndpoint,
+        endpoint: migration.nextEndpoint,
+        rewritten_endpoint_fields: migration.rewrittenEndpointFields,
+        hub: syncResults.hubResult,
+        indexes: syncResults.indexResults,
+      }, true);
+      return;
+    }
+
+    console.log('\nMigrated hosted endpoint to the canonical protocol domain.');
+    console.log(`  Previous:  ${migration.previousEndpoint}`);
+    console.log(`  Current:   ${migration.nextEndpoint}`);
+    if (migration.rewrittenEndpointFields.length > 0) {
+      console.log(`  Endpoints: ${migration.rewrittenEndpointFields.join(', ')}`);
+    }
+
+    console.log('\nHosted sync results:');
+    if (syncResults.hubResult) {
+      console.log(`  Hub:       ${syncResults.hubResult.ok ? 'synced' : `failed - ${syncResults.hubResult.error}`}`);
+    }
+    if (syncResults.indexResults.length === 0) {
+      console.log('  Indexes:   none configured locally');
+      return;
+    }
+
+    for (const result of syncResults.indexResults) {
+      console.log(`  Index:     ${result.url} - ${result.ok ? 'synced' : `failed - ${result.error}`}`);
+    }
+  });
+
 export const identityCommand = new Command('identity')
   .description('Manage local identity state')
-  .addCommand(identityEditCommand);
+  .addCommand(identityEditCommand)
+  .addCommand(identityMigrateHostedEndpointCommand);

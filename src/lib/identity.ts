@@ -1,8 +1,9 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import yaml from 'js-yaml';
 import { isManifest } from '../models/manifest.js';
 import type { ASPClientIdentity, ASPIdentityProvider } from './types.js';
+import { migrateLegacyHostedManifest } from '../hosted/manifest-migration.js';
 
 export class FileIdentityProvider implements ASPIdentityProvider {
   constructor(private readonly identityDir: string) {}
@@ -21,6 +22,18 @@ export class FileIdentityProvider implements ASPIdentityProvider {
     const parsed = yaml.load(raw);
     if (!isManifest(parsed)) {
       throw new Error('Invalid manifest format');
+    }
+    const migration = migrateLegacyHostedManifest(parsed);
+    if (!migration.ok) {
+      throw new Error(migration.error);
+    }
+    if (migration.updated) {
+      const nextRaw = yaml.dump(parsed, {
+        lineWidth: -1,
+        noRefs: true,
+        sortKeys: false,
+      });
+      writeFileSync(manifestPath, nextRaw, 'utf-8');
     }
 
     const keyPath = join(this.identityDir, 'private.pem');
