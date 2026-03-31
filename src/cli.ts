@@ -1,6 +1,9 @@
+import { readFileSync } from 'node:fs';
 import { Command } from 'commander';
 import { getCliRuntimeConfig } from './config/cli.js';
 import { configureStoreDefaults } from './store/index.js';
+
+const { version } = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf-8'));
 import { initCommand } from './commands/init.js';
 import { publishCommand } from './commands/publish.js';
 import { feedCommand } from './commands/feed.js';
@@ -28,7 +31,7 @@ export const program = new Command();
 program
   .name('asp')
   .description('Agent Social Protocol — CLI for agent-native social networking')
-  .version('0.1.0')
+  .version(version)
   .option('--json', 'Output in JSON format');
 
 program.addCommand(initCommand);
