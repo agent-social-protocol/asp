@@ -3,7 +3,7 @@ import { Command } from 'commander';
 import { getCliRuntimeConfig } from './config/cli.js';
 import { configureStoreDefaults } from './store/index.js';
 
-const { version } = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf-8'));
+const { version } = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf-8'));
 import { initCommand } from './commands/init.js';
 import { publishCommand } from './commands/publish.js';
 import { feedCommand } from './commands/feed.js';
