@@ -50,7 +50,12 @@ export function handleFromHostedEndpoint(endpoint: string, config: ASPRuntimeCon
     if (host.endsWith(suffix) && host !== hosted.hostedHandleDomain) {
       return host.slice(0, -suffix.length);
     }
-  } catch {}
+  } catch (error) {
+    if (error instanceof TypeError) {
+      return null;
+    }
+    throw error;
+  }
   return null;
 }
 
