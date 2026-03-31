@@ -709,12 +709,50 @@ describe('ASPClient', () => {
       secondClient.disconnect();
     });
 
+    it('sends canonicalized subscribe filters in websocket auth', async () => {
+      MockStreamWebSocket.instances = [];
+      vi.stubGlobal('WebSocket', MockStreamWebSocket as any);
+
+      const transport: ASPClientTransport = {
+        searchIndex: vi.fn().mockResolvedValue([]),
+        getInbox: vi.fn().mockResolvedValue({ entries: [], nextCursor: null }),
+        resolveInboxStream: vi.fn().mockResolvedValue({
+          url: 'wss://alice.asp.social/asp/ws',
+          subscribe: ['@alice', 'asp-zeta', 'asp-zeta', ' asp-alpha '],
+        }),
+        publish: vi.fn().mockResolvedValue({ ok: true, id: 'entry-1' }),
+      };
+
+      const client = new ASPClient({ identityDir: tmpDir, transport });
+      const connectPromise = client.connect();
+      await vi.waitFor(() => {
+        expect(MockStreamWebSocket.instances).toHaveLength(1);
+      });
+      const socket = MockStreamWebSocket.instances[0];
+      socket.emitMessage({ type: 'challenge', nonce: 'nonce-1' });
+      await vi.waitFor(() => {
+        expect(socket.sent).toHaveLength(1);
+      });
+
+      expect(JSON.parse(socket.sent[0])).toMatchObject({
+        type: 'auth',
+        handle: 'alice',
+        nonce: 'nonce-1',
+        subscribe: ['alice', 'asp-alpha', 'asp-zeta'],
+      });
+
+      socket.emitMessage({ type: 'auth_ok', resumed_from_cursor: null });
+      await connectPromise;
+      client.disconnect();
+    });
+
     it('falls back to polling while reconnecting and returns to websocket delivery', async () => {
       vi.useFakeTimers();
       try {
         enableStreamCapability(tmpDir);
         MockStreamWebSocket.instances = [];
         vi.stubGlobal('WebSocket', MockStreamWebSocket as any);
+        vi.spyOn(Math, 'random').mockReturnValue(1);
 
         let inboxReads = 0;
         const fetchMock = vi.fn().mockImplementation((url: string) => {
@@ -783,6 +821,60 @@ describe('ASPClient', () => {
         const pollReadsAfterReconnect = fetchMock.mock.calls.length;
         await vi.advanceTimersByTimeAsync(60_000);
         expect(fetchMock).toHaveBeenCalledTimes(pollReadsAfterReconnect);
+
+        client.disconnect();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('applies jitter to websocket reconnect backoff', async () => {
+      vi.useFakeTimers();
+      try {
+        enableStreamCapability(tmpDir);
+        MockStreamWebSocket.instances = [];
+        vi.stubGlobal('WebSocket', MockStreamWebSocket as any);
+        vi.spyOn(Math, 'random').mockReturnValue(0);
+
+        const fetchMock = vi.fn().mockImplementation((url: string) => {
+          if (String(url).includes('/asp/inbox')) {
+            return Promise.resolve({
+              ok: true,
+              json: () => Promise.resolve({
+                entries: [],
+                next_cursor: null,
+              }),
+            });
+          }
+          return Promise.resolve({ ok: false });
+        });
+        vi.stubGlobal('fetch', fetchMock);
+
+        const client = new ASPClient({ identityDir: tmpDir });
+        const connectPromise = client.connect();
+        await vi.waitFor(() => {
+          expect(MockStreamWebSocket.instances).toHaveLength(1);
+        });
+        const firstSocket = MockStreamWebSocket.instances[0];
+        firstSocket.emitMessage({ type: 'challenge', nonce: 'nonce-1' });
+        await vi.waitFor(() => {
+          expect(firstSocket.sent).toHaveLength(1);
+        });
+        firstSocket.emitMessage({ type: 'auth_ok', resumed_from_cursor: null });
+        await connectPromise;
+
+        firstSocket.close(1012, 'server_restart');
+        await Promise.resolve();
+        await Promise.resolve();
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+
+        await vi.advanceTimersByTimeAsync(499);
+        expect(MockStreamWebSocket.instances).toHaveLength(1);
+
+        await vi.advanceTimersByTimeAsync(1);
+        await vi.waitFor(() => {
+          expect(MockStreamWebSocket.instances).toHaveLength(2);
+        });
 
         client.disconnect();
       } finally {

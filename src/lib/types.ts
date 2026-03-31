@@ -37,6 +37,7 @@ export interface ASPClientRuntime {
 
 export interface ASPInboxStreamConfig {
   url: string;
+  subscribe?: string[];
 }
 
 export interface ASPClientTransportOptions {

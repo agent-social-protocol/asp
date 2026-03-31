@@ -44,6 +44,7 @@ const DEFAULT_STREAM_HANDSHAKE_TIMEOUT_MS = 5_000;
 const DEFAULT_STREAM_RECONNECT_BASE_MS = 1_000;
 const DEFAULT_STREAM_RECONNECT_MAX_MS = 300_000;
 const RECENT_DELIVERY_KEY_LIMIT = 2_048;
+const STREAM_RECONNECT_JITTER_MIN = 0.5;
 
 interface InboxDeliveryStateFile {
   cursor: string | null;
@@ -99,8 +100,46 @@ function normalizeAuthHandle(handle: string): string {
   return handle.replace(/^@/, '');
 }
 
-function buildHostedWsAuthPayload(handle: string, nonce: string): string {
-  return `ws-auth:${handle}:${nonce}:*`;
+function normalizeStreamSubscribe(subscribe: readonly string[] | undefined): string[] | undefined {
+  if (subscribe === undefined) {
+    return undefined;
+  }
+
+  const deduped = new Set<string>();
+  for (const handle of subscribe) {
+    if (typeof handle !== 'string') {
+      continue;
+    }
+
+    const normalized = normalizeAuthHandle(handle.trim());
+    if (normalized) {
+      deduped.add(normalized);
+    }
+  }
+
+  if (deduped.size === 0) {
+    throw new Error('Inbox stream subscribe must include at least one identity handle');
+  }
+
+  return [...deduped].sort((a, b) => a.localeCompare(b));
+}
+
+function serializeStreamSubscribe(subscribe: readonly string[] | undefined): string {
+  const normalized = normalizeStreamSubscribe(subscribe);
+  return normalized === undefined ? '*' : normalized.join(',');
+}
+
+function buildHostedWsAuthPayload(handle: string, nonce: string, subscribe?: readonly string[]): string {
+  return `ws-auth:${handle}:${nonce}:${serializeStreamSubscribe(subscribe)}`;
+}
+
+function computeStreamReconnectDelayMs(attempt: number, random = Math.random): number {
+  const cappedBaseDelay = Math.min(
+    DEFAULT_STREAM_RECONNECT_MAX_MS,
+    DEFAULT_STREAM_RECONNECT_BASE_MS * (2 ** attempt),
+  );
+  const jitter = STREAM_RECONNECT_JITTER_MIN + (random() * (1 - STREAM_RECONNECT_JITTER_MIN));
+  return Math.round(cappedBaseDelay * jitter);
 }
 
 async function readWebSocketMessageText(data: unknown): Promise<string | null> {
@@ -622,7 +661,7 @@ export class ASPClient extends EventEmitter<ASPClientEventMap> {
           }
 
           if (isHostedWsChallengeMessage(parsed)) {
-            socket.send(JSON.stringify(this._buildStreamAuthMessage(parsed.nonce)));
+            socket.send(JSON.stringify(this._buildStreamAuthMessage(parsed.nonce, config)));
             return;
           }
 
@@ -694,18 +733,20 @@ export class ASPClient extends EventEmitter<ASPClientEventMap> {
     });
   }
 
-  private _buildStreamAuthMessage(nonce: string): Record<string, unknown> {
+  private _buildStreamAuthMessage(nonce: string, config: ASPInboxStreamConfig): Record<string, unknown> {
     if (!this._privateKey) {
       throw new Error('Private key required for authenticated operations');
     }
 
     const handle = normalizeAuthHandle(this._manifest.entity.handle);
+    const subscribe = normalizeStreamSubscribe(config.subscribe);
     return {
       type: 'auth',
       handle,
       nonce,
+      ...(subscribe ? { subscribe } : {}),
       ...(this._lastInboxCursor ? { cursor: this._lastInboxCursor } : {}),
-      signature: signPayload(buildHostedWsAuthPayload(handle, nonce), this._privateKey),
+      signature: signPayload(buildHostedWsAuthPayload(handle, nonce, subscribe), this._privateKey),
     };
   }
 
@@ -838,10 +879,7 @@ export class ASPClient extends EventEmitter<ASPClientEventMap> {
       return;
     }
 
-    const delay = Math.min(
-      DEFAULT_STREAM_RECONNECT_MAX_MS,
-      DEFAULT_STREAM_RECONNECT_BASE_MS * (2 ** this._streamReconnectAttempt),
-    );
+    const delay = computeStreamReconnectDelayMs(this._streamReconnectAttempt);
     this._streamReconnectAttempt += 1;
     this._streamReconnectTimer = setTimeout(() => {
       this._streamReconnectTimer = null;
