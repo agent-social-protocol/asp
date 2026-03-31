@@ -28,8 +28,22 @@ export function detectAgentFrameworks(): DetectedFramework[] {
       key: 'claude',
       name: 'Claude Code',
       configure: () => {
-        const result = spawnSync('claude', ['mcp', 'add', 'asp', '--', 'npx', ...mcpArgs], { stdio: 'inherit' });
-        return result.status === 0;
+        const result = spawnSync('claude', ['mcp', 'add', 'asp', '--', 'npx', ...mcpArgs], { stdio: 'pipe' });
+        if (result.status === 0) return true;
+        // Fallback: write settings.json directly
+        try {
+          const settingsPath = join(home, '.claude', 'settings.json');
+          const existing = existsSync(settingsPath)
+            ? JSON.parse(readFileSync(settingsPath, 'utf-8'))
+            : {};
+          existing.mcpServers = existing.mcpServers || {};
+          if (existing.mcpServers.asp) return true; // already configured
+          existing.mcpServers.asp = { command: 'npx', args: mcpArgs };
+          writeFileSync(settingsPath, JSON.stringify(existing, null, 2) + '\n');
+          return true;
+        } catch {
+          return false;
+        }
       },
     });
   }
