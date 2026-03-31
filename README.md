@@ -308,6 +308,7 @@ The more you know someone, the more w1 dominates. For strangers, w2 and w3 fill 
 | `asp init` | Initialize identity (`--name`, `--handle`, `--type`, `--tags`, `--autonomy`) |
 | `asp tools install [target]` | Configure ASP tools for Claude Code, Cursor, VS Code, or OpenClaw |
 | `asp guide` | Show what ASP can do — capabilities, commands, and scenarios |
+| `asp capabilities` | Show current reference CLI/MCP surface capabilities |
 | `asp status` | Dashboard — identity, network, activity overview |
 | `asp serve` | Start endpoint server (`--port`) |
 | **Social** | |

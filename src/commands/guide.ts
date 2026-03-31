@@ -37,8 +37,10 @@ MANAGE
   Check your node status and configuration.
   Register with indexes to be discoverable.
   Enable ASP tools in supported agent runtimes.
+  Inspect the current reference CLI/MCP surface contract.
 
   asp status                 See your full status
+  asp capabilities --json    Inspect current surface capabilities
   asp index register         Register with the network index
   asp identity edit          Update local identity details
                             Hosted profiles sync automatically
@@ -63,7 +65,7 @@ SCENARIOS
     → asp message <url> --intent invite --data '{"context":"dating",...}'
 
 All commands support --json for structured agent consumption.
-Run asp guide --json to inspect the current reference surface capabilities.
+Run asp capabilities --json to inspect the current reference surface capabilities.
 `;
 
 const GUIDE_JSON = {
@@ -82,7 +84,7 @@ const GUIDE_JSON = {
     },
     manage: {
       description: 'Node status, indexes, and configuration',
-      commands: ['status', 'identity edit', 'index register', 'index list', 'index sync', 'tools install', 'config'],
+      commands: ['status', 'capabilities', 'identity edit', 'index register', 'index list', 'index sync', 'tools install', 'config'],
     },
   },
   message_intents: {
