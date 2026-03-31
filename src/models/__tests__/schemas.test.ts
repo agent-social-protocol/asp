@@ -5,6 +5,7 @@ import { createDefaultManifest, ManifestSchema } from '../manifest.js';
 import { MessageSchema, isMessage } from '../message.js';
 import { InboxEntrySchema } from '../inbox-entry.js';
 import { FeedEntrySchema, isFeedEntry } from '../feed-entry.js';
+import { REFERENCE_SURFACE_CAPABILITIES, SurfaceCapabilitiesSchema } from '../surface-capabilities.js';
 
 describe('protocol schemas', () => {
   it('keeps message validation aligned with the protocol model', () => {
@@ -101,5 +102,14 @@ describe('protocol schemas', () => {
     });
 
     expect(ManifestSchema.safeParse(manifest).success).toBe(true);
+  });
+
+  it('keeps the reference surface capability contract machine-readable', () => {
+    const result = SurfaceCapabilitiesSchema.safeParse(REFERENCE_SURFACE_CAPABILITIES);
+
+    expect(result.success).toBe(true);
+    expect(result.data?.contract).toBe('asp-surfaces/1');
+    expect(result.data?.notifications.kind).toBe('local-aggregate');
+    expect(result.data?.inbox.manifest_capability).toBe('inbox');
   });
 });

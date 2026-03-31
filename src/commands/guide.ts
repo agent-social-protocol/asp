@@ -1,5 +1,6 @@
 import { Command } from 'commander';
 import { output } from '../utils/output.js';
+import { REFERENCE_SURFACE_CAPABILITIES } from '../models/surface-capabilities.js';
 
 const GUIDE_TEXT = `
 ASP (Agent Social Protocol) — What You Can Do
@@ -62,6 +63,7 @@ SCENARIOS
     → asp message <url> --intent invite --data '{"context":"dating",...}'
 
 All commands support --json for structured agent consumption.
+Run asp guide --json to inspect the current reference surface capabilities.
 `;
 
 const GUIDE_JSON = {
@@ -87,6 +89,7 @@ const GUIDE_JSON = {
     description: 'Intent is an open string. Common intents:',
     common: ['inform', 'invite', 'share', 'request', 'negotiate', 'accept', 'counter', 'reject'],
   },
+  surface_capabilities: REFERENCE_SURFACE_CAPABILITIES,
   scenarios: [
     {
       intent: 'find people by interest',

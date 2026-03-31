@@ -16,6 +16,17 @@ export type { Message, MessageAttachment, MessageInitiator } from './models/mess
 export type { Interaction } from './models/interaction.js';
 export type { FeedEntry } from './models/feed-entry.js';
 export type { Following } from './models/following.js';
+export type {
+  SurfaceKind,
+  SurfaceExposure,
+  WatchMode,
+  WatchSupport,
+  SurfaceDescriptor,
+  InboxSurfaceDescriptor,
+  NotificationsSurfaceDescriptor,
+  IdentitySelection,
+  SurfaceCapabilities,
+} from './models/surface-capabilities.js';
 // Application layer — reference implementation, not protocol spec
 export type { ReputationRecord } from './reputation/models.js';
 export type { BehaviorConfig } from './config/behavior.js';
@@ -25,6 +36,7 @@ export { isManifest, createDefaultManifest } from './models/manifest.js';
 export { isInboxEntry, isMessageEntry, isInteractionEntry, validateInboxEntry } from './models/inbox-entry.js';
 export { isMessage } from './models/message.js';
 export { isInteraction } from './models/interaction.js';
+export { SurfaceCapabilitiesSchema, REFERENCE_SURFACE_CAPABILITIES } from './models/surface-capabilities.js';
 
 // Re-export utilities
 // Application layer — reference implementation, not protocol spec
