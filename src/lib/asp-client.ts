@@ -8,6 +8,7 @@ import type { Interaction } from '../models/interaction.js';
 import { isInboxEntry, type InboxEntry } from '../models/inbox-entry.js';
 import type {
   ASPClientOptions,
+  ASPDeliveryMode,
   ASPInboxStreamConfig,
   ASPClientTransport,
   ASPClientRuntime,
@@ -200,6 +201,7 @@ export interface ASPClientEventMap {
   message: [Message];
   interaction: [Interaction];
   error: [Error];
+  delivery_mode_changed: [ASPDeliveryMode];
   connected: [];
   disconnected: [];
 }
@@ -221,6 +223,7 @@ export class ASPClient extends EventEmitter<ASPClientEventMap> {
   private _streamConfig: ASPInboxStreamConfig | null = null;
   private _connectPromise: Promise<void> | null = null;
   private _disconnectRequested = false;
+  private _deliveryMode: ASPDeliveryMode = 'none';
   private _pollIntervalMs: number;
   private _lastInboxCursor: string | null = null;
   private _lastInboxSince: string | null = null;
@@ -303,6 +306,7 @@ export class ASPClient extends EventEmitter<ASPClientEventMap> {
     }
 
     if (wasConnected) {
+      this._setDeliveryMode('none');
       this.emit('disconnected');
     }
   }
@@ -310,6 +314,10 @@ export class ASPClient extends EventEmitter<ASPClientEventMap> {
   /** Whether the client is currently connected (polling or WS). */
   get connected(): boolean {
     return this._pollTimer !== null || this._streamSocket !== null;
+  }
+
+  get deliveryMode(): ASPDeliveryMode {
+    return this._deliveryMode;
   }
 
   /**
@@ -537,6 +545,7 @@ export class ASPClient extends EventEmitter<ASPClientEventMap> {
       return;
     }
     this._pollTimer = setInterval(() => void this._poll(), this._pollIntervalMs);
+    this._setDeliveryMode('poll');
   }
 
   private _stopPolling(): void {
@@ -842,6 +851,7 @@ export class ASPClient extends EventEmitter<ASPClientEventMap> {
     this._clearActiveStreamSocket();
     this._streamSocket = socket;
     this._streamLifecycle = { socket, cleanup };
+    this._setDeliveryMode('stream');
   }
 
   private _clearActiveStreamSocket(expected: WebSocket | null = null): WebSocket | null {
@@ -853,7 +863,16 @@ export class ASPClient extends EventEmitter<ASPClientEventMap> {
     this._streamSocket = null;
     this._streamLifecycle = null;
     lifecycle?.cleanup();
+    this._setDeliveryMode(this._pollTimer ? 'poll' : 'none');
     return lifecycle?.socket ?? null;
+  }
+
+  private _setDeliveryMode(mode: ASPDeliveryMode): void {
+    if (this._deliveryMode === mode) {
+      return;
+    }
+    this._deliveryMode = mode;
+    this.emit('delivery_mode_changed', mode);
   }
 
   private _closePendingStreamSocket(): void {

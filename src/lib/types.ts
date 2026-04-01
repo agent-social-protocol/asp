@@ -35,6 +35,8 @@ export interface ASPClientRuntime {
   makeAuthHeader(method: string, pathname: string): Promise<string>;
 }
 
+export type ASPDeliveryMode = 'none' | 'poll' | 'stream';
+
 export interface ASPInboxStreamConfig {
   url: string;
   subscribe?: string[];

@@ -5,7 +5,7 @@ export { ASPClient } from './lib/asp-client.js';
 export type { ASPClientEventMap } from './lib/asp-client.js';
 export { MemoryStore, FileStore } from './lib/store.js';
 export type { ASPStore, StoreData } from './lib/store.js';
-export type { ASPNodeOptions, ASPHttpHandler, ASPClientOptions } from './lib/types.js';
+export type { ASPNodeOptions, ASPHttpHandler, ASPClientOptions, ASPDeliveryMode } from './lib/types.js';
 export { createASPHandler } from './lib/handler.js';
 export type { ASPHandlerCallbacks, ASPHandlerOptions } from './lib/handler.js';
 
