@@ -9,8 +9,9 @@ import { summarizeInboxEntry } from '../utils/inbox-display.js';
 import { readOwnInboxPage } from '../utils/own-inbox.js';
 
 export const notificationsCommand = new Command('notifications')
-  .description('Check for new posts and inbox activity')
-  .action(async (_opts, cmd) => {
+  .description('Check new posts and inbox activity since last checked')
+  .option('--peek', 'Show updates without marking them as checked')
+  .action(async (opts, cmd) => {
     const json = cmd.optsWithGlobals().json;
 
     if (!storeInitialized()) {
@@ -56,7 +57,12 @@ export const notificationsCommand = new Command('notifications')
     }
 
     if (json) {
-      output({ new_posts: newPosts, new_entries: newEntries }, true);
+      output({
+        new_posts: newPosts,
+        new_entries: newEntries,
+        peek: !!opts.peek,
+        last_checked: notifs.last_checked,
+      }, true);
     } else {
       if (newPosts.length === 0 && newEntries.length === 0) {
         console.log('No new notifications.');
@@ -78,6 +84,7 @@ export const notificationsCommand = new Command('notifications')
       }
     }
 
-    // Update last checked
-    await updateLastChecked();
+    if (!opts.peek) {
+      await updateLastChecked();
+    }
   });

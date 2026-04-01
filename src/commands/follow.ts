@@ -27,6 +27,14 @@ function displayHandle(endpoint: string): string {
   return h ? `@${h}` : endpoint.replace(/^https?:\/\//, '');
 }
 
+function isAlreadyFollowingError(error: unknown, url: string): boolean {
+  return error instanceof Error && error.message === `Already following ${url}`;
+}
+
+function isNotFollowingError(error: unknown, url: string): boolean {
+  return error instanceof Error && error.message === `Not following ${url}`;
+}
+
 export const followCommand = new Command('follow')
   .description('Follow an entity (sends a follow interaction and adds to your following list)')
   .argument('<target>', 'Target to follow (@handle, domain, or URL)')
@@ -64,7 +72,7 @@ export const followCommand = new Command('follow')
     // Send follow interaction (suppress output — follow handles its own)
     const result = await doInteraction('follow', targetUrl, undefined, false, false, true);
 
-    // Save follow locally
+    let localSaved = true;
     try {
       await addFollowing({
         url: targetUrl,
@@ -73,23 +81,52 @@ export const followCommand = new Command('follow')
         added: new Date().toISOString(),
         created_by: 'human',
       });
-    } catch {
-      // Already following — not an error
+    } catch (error) {
+      if (!isAlreadyFollowingError(error, targetUrl)) {
+        localSaved = false;
+      }
     }
 
     const targetDisplay = displayHandle(targetUrl);
 
+    if (!localSaved) {
+      const error = `Could not save local following state for ${targetDisplay}`;
+      if (json) {
+        output({
+          status: 'error',
+          error,
+          target: { url: targetUrl, name: targetManifest.entity?.name, handle: targetManifest.entity?.handle },
+          remote_notified: result.remote_notified,
+          local_following_saved: false,
+        }, true);
+      } else {
+        console.log(`\n  ✗ Could not follow ${targetDisplay}`);
+        console.log(`    (${error})`);
+      }
+      process.exitCode = 1;
+      return;
+    }
+
     if (json) {
+      const partial = !result.remote_notified;
       output({
-        status: result.status === 'error' ? 'error' : 'followed',
+        status: partial ? 'partial' : 'followed',
         target: { url: targetUrl, name: targetManifest.entity?.name, handle: targetManifest.entity?.handle },
+        remote_notified: result.remote_notified,
+        local_following_saved: true,
         ...(result.warning && { warning: result.warning }),
       }, true);
       return;
     }
 
-    console.log(`\n  \u2713 Now following ${targetDisplay}`);
-    if (result.warning) {
+    if (result.remote_notified) {
+      console.log(`\n  \u2713 Following ${targetDisplay}`);
+    } else {
+      console.log(`\n  \u2713 Following ${targetDisplay} locally`);
+    }
+    if (!result.remote_notified && result.warning) {
+      console.log(`    (could not notify them: ${result.warning.replace(/^Could not notify:\s*/, '')})`);
+    } else if (result.warning) {
       console.log(`    (${result.warning})`);
     }
     console.log('');
@@ -119,24 +156,52 @@ export const unfollowCommand = new Command('unfollow')
     // Send unfollow interaction (suppress output — unfollow handles its own)
     const result = await doInteraction('unfollow', targetUrl, undefined, false, false, true);
 
-    // Remove local follow
+    let localSaved = true;
     try {
       await removeFollowing(targetUrl);
-    } catch {
-      // Not following — not an error
+    } catch (error) {
+      if (!isNotFollowingError(error, targetUrl)) {
+        localSaved = false;
+      }
+    }
+
+    if (!localSaved) {
+      const error = `Could not update local following state for ${displayHandle(targetUrl)}`;
+      if (json) {
+        output({
+          status: 'error',
+          error,
+          target: { url: targetUrl, handle: displayHandle(targetUrl) },
+          remote_notified: result.remote_notified,
+          local_following_saved: false,
+        }, true);
+      } else {
+        console.log(`  \u2717 Could not unfollow ${displayHandle(targetUrl)}`);
+        console.log(`    (${error})`);
+      }
+      process.exitCode = 1;
+      return;
     }
 
     if (json) {
       output({
-        status: result.status === 'error' ? 'error' : 'unfollowed',
+        status: result.remote_notified ? 'unfollowed' : 'partial',
         target: { url: targetUrl, handle: displayHandle(targetUrl) },
+        remote_notified: result.remote_notified,
+        local_following_saved: true,
         ...(result.warning && { warning: result.warning }),
       }, true);
       return;
     }
 
-    console.log(`  \u2713 Unfollowed ${displayHandle(targetUrl)}`);
-    if (result.warning) {
+    if (result.remote_notified) {
+      console.log(`  \u2713 Unfollowed ${displayHandle(targetUrl)}`);
+    } else {
+      console.log(`  \u2713 Unfollowed ${displayHandle(targetUrl)} locally`);
+    }
+    if (!result.remote_notified && result.warning) {
+      console.log(`    (could not notify them: ${result.warning.replace(/^Could not notify:\s*/, '')})`);
+    } else if (result.warning) {
       console.log(`    (${result.warning})`);
     }
   });

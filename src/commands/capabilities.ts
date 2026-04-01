@@ -19,6 +19,7 @@ NOTIFICATIONS
   Computed from:
     - followed feeds since last_checked
     - current identity inbox entries since last_checked
+  Use --peek for a read-only check that does not advance last_checked.
   Currently exposed via CLI only.
 
 FEEDS

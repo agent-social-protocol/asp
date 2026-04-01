@@ -13,14 +13,17 @@ import { buildInboxEntrySignaturePayload, interactionToInboxEntry } from '../uti
 
 export interface InteractionResult {
   status: 'sent' | 'saved_locally' | 'error';
+  remote_notified: boolean;
+  saved_locally: boolean;
   warning?: string;
+  error?: string;
 }
 
 export async function doInteraction(action: string, target: string, content: string | undefined, isLocal: boolean, json: boolean, silent = false, resourceTarget?: string): Promise<InteractionResult> {
   if (!storeInitialized()) {
     output(json ? { error: 'Not initialized' } : 'Not initialized. Run `asp init` first.', json);
     process.exitCode = 1;
-    return { status: 'error' };
+    return { status: 'error', remote_notified: false, saved_locally: false, error: 'Not initialized' };
   }
 
   const manifest = await readManifest();
@@ -56,20 +59,29 @@ export async function doInteraction(action: string, target: string, content: str
     if (!result.ok) {
       const warning = `Could not notify: ${result.error}`;
       if (json) {
-        output({ status: 'saved_locally', warning, interaction }, true);
+        output({ status: 'saved_locally', remote_notified: false, saved_locally: true, warning, interaction }, true);
       } else if (!silent) {
         console.log(`${action} saved locally (${warning})`);
       }
-      return { status: 'saved_locally', warning };
+      return { status: 'saved_locally', remote_notified: false, saved_locally: true, warning };
     }
   }
 
   if (json) {
-    output({ status: isLocal ? 'saved_locally' : 'sent', interaction }, true);
+    output({
+      status: isLocal ? 'saved_locally' : 'sent',
+      remote_notified: !isLocal,
+      saved_locally: true,
+      interaction,
+    }, true);
   } else if (!silent) {
     console.log(`${action}: ${resourceTarget || target}`);
   }
-  return { status: isLocal ? 'saved_locally' : 'sent' };
+  return {
+    status: isLocal ? 'saved_locally' : 'sent',
+    remote_notified: !isLocal,
+    saved_locally: true,
+  };
 }
 
 export const interactCommand = new Command('interact')

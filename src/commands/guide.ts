@@ -18,9 +18,12 @@ SOCIAL
                             React to a post
 
 COMMUNICATE
+  Read one unified inbox for messages and social activity.
   Send messages with any intent and structured data.
   Threading via --reply-to enables multi-round conversations.
 
+  asp inbox                   Read messages, follows, waves, and more
+  asp notifications --peek    Check what's new without marking it read
   asp message <url> --text "..." --intent invite
   asp message <url> --text "..." --intent negotiate --data '{...}'
   asp message <url> --text "Sounds good" --reply-to <id> --intent accept

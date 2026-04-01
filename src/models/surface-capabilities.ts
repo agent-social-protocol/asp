@@ -101,7 +101,7 @@ export const REFERENCE_SURFACE_CAPABILITIES: SurfaceCapabilities = {
       native: false,
     },
     source: ['following-feed', 'own-inbox', 'last-checked-cursor'],
-    notes: 'Notifications are a local overview built from followed feeds plus the current identity inbox since last_checked. Hosted identities read their own protocol inbox; self-hosted identities read local inbox state. This is not a core protocol endpoint today.',
+    notes: 'Notifications are a local overview built from followed feeds plus the current identity inbox since last_checked. Hosted identities read their own protocol inbox; self-hosted identities read local inbox state. The default command advances last_checked; use --peek for a read-only check. This is not a core protocol endpoint today.',
   },
   feed: {
     merged_read: {

@@ -31,8 +31,9 @@ export const statusCommand = new Command('status')
     const indexes = await readIndexes();
     const behavior = await readBehavior();
 
-    let inboxEntryCount: number;
-    let newInboxEntries: number;
+    let inboxEntryCount: number | null = null;
+    let newInboxEntries: number | null = null;
+    let inboxError: string | null = null;
     try {
       const [inboxPage, newInboxPage] = await Promise.all([
         readOwnInboxPage({ direction: 'received' }),
@@ -41,10 +42,7 @@ export const statusCommand = new Command('status')
       inboxEntryCount = inboxPage.entries.length;
       newInboxEntries = newInboxPage.entries.length;
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      output(json ? { error: message } : `Could not read inbox (${message})`, json);
-      process.exitCode = 1;
-      return;
+      inboxError = error instanceof Error ? error.message : String(error);
     }
 
     const entity = manifest?.entity;
@@ -68,6 +66,7 @@ export const statusCommand = new Command('status')
           inbox_entries: inboxEntryCount,
           new_posts: newPosts,
           new_inbox_entries: newInboxEntries,
+          ...(inboxError && { inbox_error: inboxError }),
         },
         indexes: indexes.map(i => ({ url: i.url, last_synced: i.last_synced })),
         autonomy: behavior?.autonomy_level,
@@ -87,8 +86,11 @@ export const statusCommand = new Command('status')
     console.log(`  Relationships: ${relationships.length}`);
     console.log('');
     console.log(`  Feed posts:    ${feed.length}`);
-    console.log(`  Inbox entries: ${inboxEntryCount}`);
-    console.log(`  Notifications: ${newPosts} new posts, ${newInboxEntries} new inbox entries`);
+    console.log(`  Inbox entries: ${inboxEntryCount === null ? 'unavailable' : inboxEntryCount}`);
+    console.log(`  Notifications: ${newPosts} new posts, ${newInboxEntries === null ? 'inbox unavailable' : `${newInboxEntries} new inbox entries`}`);
+    if (inboxError) {
+      console.log(`  Inbox warning: ${inboxError}`);
+    }
     console.log('');
     if (indexes.length === 0) {
       console.log(`  Indexes:       (none) — run \`asp index register\` to be discoverable`);
@@ -115,7 +117,7 @@ export const statusCommand = new Command('status')
       suggestions.push('Be discoverable: asp index register');
     }
 
-    if (inboxEntryCount > 0) {
+    if (typeof inboxEntryCount === 'number' && inboxEntryCount > 0) {
       suggestions.push(`Read inbox: asp inbox (${inboxEntryCount} entries)`);
     }
 
