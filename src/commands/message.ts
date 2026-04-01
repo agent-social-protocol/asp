@@ -5,19 +5,20 @@ import { addMessage } from '../store/inbox-store.js';
 import { sendMessage } from '../utils/send-message.js';
 import { generateMessageId } from '../utils/id.js';
 import { output } from '../utils/output.js';
-import { getRecipientEncryptionKey, encryptMessageContent, isEncryptedMessage, decryptMessageContent } from '../utils/encrypt-message.js';
+import { outputCliError } from '../utils/cli-error.js';
+import { getRecipientEncryptionKey, encryptMessageContent } from '../utils/encrypt-message.js';
 import { readFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import type { Message } from '../models/message.js';
 import { signPayload } from '../utils/crypto.js';
 import { resolveEndpoint } from '../identity/resolve-target.js';
-import { buildEndpointUrl } from '../utils/endpoint-url.js';
-import { buildInboxEntrySignaturePayload, inboxEntryToMessage, messageToInboxEntry } from '../utils/inbox-entry.js';
+import { buildInboxEntrySignaturePayload, messageToInboxEntry } from '../utils/inbox-entry.js';
 import { getInboxEntryCursor, type InboxEntryKind } from '../models/inbox-entry.js';
-import { inboxEntryToInteraction } from '../utils/inbox-entry.js';
 import { summarizeInboxEntry } from '../utils/inbox-display.js';
 import { readOwnInboxPage } from '../utils/own-inbox.js';
 import { runInboxFollow } from '../runtime/inbox-follow.js';
+import { resolveReadableInboxEntries } from '../utils/readable-inbox.js';
+import { normalizeInboxEntriesForAgent } from '../utils/agent-items.js';
 
 function parseInboxKind(kind: string): InboxEntryKind {
   if (kind === 'message' || kind === 'interaction') {
@@ -47,19 +48,33 @@ export const messageCommand = new Command('message')
     try {
       targetUrl = await resolveEndpoint(targetUrl);
     } catch (err) {
-      output(json ? { error: (err as Error).message } : (err as Error).message, json);
+      outputCliError({
+        code: 'target_resolution_failed',
+        message: (err as Error).message,
+      }, json);
       process.exitCode = 1;
       return;
     }
 
     if (!storeInitialized()) {
-      output(json ? { error: 'Not initialized' } : 'Not initialized. Run `asp init` first.', json);
+      outputCliError({
+        code: 'not_initialized',
+        message: 'Not initialized',
+        hint: 'Run `asp init` first.',
+        human: 'Not initialized. Run `asp init` first.',
+      }, json);
       process.exitCode = 1;
       return;
     }
 
     if (!opts.text) {
-      output(json ? { error: 'No text provided' } : 'Provide message text with --text.', json);
+      outputCliError({
+        code: 'invalid_args',
+        message: 'No text provided',
+        usage: 'asp message <target> --text <text>',
+        hint: 'Pass the message body with --text.',
+        human: 'Provide message text with --text.',
+      }, json);
       process.exitCode = 1;
       return;
     }
@@ -72,7 +87,11 @@ export const messageCommand = new Command('message')
       try {
         data = JSON.parse(opts.data);
       } catch {
-        output(json ? { error: 'Invalid JSON in --data' } : 'Invalid JSON in --data.', json);
+        outputCliError({
+          code: 'invalid_json',
+          message: 'Invalid JSON in --data',
+          human: 'Invalid JSON in --data.',
+        }, json);
         process.exitCode = 1;
         return;
       }
@@ -117,7 +136,16 @@ export const messageCommand = new Command('message')
     } else if (encryption.status === 'error') {
       const warning = `Could not determine recipient encryption support: ${encryption.error}`;
       if (json) {
-        output({ status: 'saved_locally', warning, message }, true);
+        output({
+          ok: true,
+          schema: 'asp.message.send.v2',
+          status: 'saved_locally',
+          warning: {
+            code: 'encryption_support_lookup_failed',
+            message: warning,
+          },
+          message,
+        }, true);
       } else {
         console.log(`Message saved locally (${warning})`);
       }
@@ -128,7 +156,16 @@ export const messageCommand = new Command('message')
     const result = await sendMessage(targetUrl, toSend);
     if (!result.ok) {
       if (json) {
-        output({ status: 'saved_locally', warning: `Could not deliver: ${result.error}`, message }, true);
+        output({
+          ok: true,
+          schema: 'asp.message.send.v2',
+          status: 'saved_locally',
+          warning: {
+            code: 'delivery_failed',
+            message: `Could not deliver: ${result.error}`,
+          },
+          message,
+        }, true);
       } else {
         console.log(`Message saved locally (could not deliver: ${result.error})`);
       }
@@ -136,7 +173,12 @@ export const messageCommand = new Command('message')
     }
 
     if (json) {
-      output({ status: 'sent', message }, true);
+      output({
+        ok: true,
+        schema: 'asp.message.send.v2',
+        status: 'sent',
+        message,
+      }, true);
     } else {
       console.log(`Message sent to ${targetUrl}`);
       console.log(`  ID:     ${message.id}`);
@@ -155,7 +197,12 @@ export const inboxCommand = new Command('inbox')
     const json = cmd.optsWithGlobals().json;
 
     if (!storeInitialized()) {
-      output(json ? { error: 'Not initialized' } : 'Not initialized. Run `asp init` first.', json);
+      outputCliError({
+        code: 'not_initialized',
+        message: 'Not initialized',
+        hint: 'Run `asp init` first.',
+        human: 'Not initialized. Run `asp init` first.',
+      }, json);
       process.exitCode = 1;
       return;
     }
@@ -181,7 +228,10 @@ export const inboxCommand = new Command('inbox')
         });
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        output(json ? { error: message } : message, json);
+        outputCliError({
+          code: 'inbox_follow_failed',
+          message,
+        }, json);
         process.exitCode = 1;
       }
       return;
@@ -197,49 +247,28 @@ export const inboxCommand = new Command('inbox')
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      output(json ? { error: message } : `Could not fetch inbox (${message})`, json);
+      outputCliError({
+        code: 'inbox_fetch_failed',
+        message,
+        human: `Could not fetch inbox (${message})`,
+      }, json);
       process.exitCode = 1;
       return;
     }
 
-    let entries = inboxPage.entries;
-    const decryptionWarnings: Array<{ id: string; error: string }> = [];
-
-    // Decrypt encrypted messages if we have the key
-    const { encryptionKeyPath } = getStorePaths();
-    if (existsSync(encryptionKeyPath)) {
-      const encPrivKey = await readFile(encryptionKeyPath, 'utf-8');
-      entries = entries.map((entry) => {
-        const message = inboxEntryToMessage(entry);
-        if (!message || !isEncryptedMessage(message)) {
-          return entry;
-        }
-        try {
-          return messageToInboxEntry(decryptMessageContent(message, encPrivKey));
-        } catch (error) {
-          decryptionWarnings.push({
-            id: entry.id,
-            error: error instanceof Error ? error.message : 'Could not decrypt message content',
-          });
-          return entry;
-        }
-      });
-    }
-
-    const messages = entries
-      .map(inboxEntryToMessage)
-      .filter((entry): entry is Message => entry !== null);
-    const interactions = entries
-      .map(inboxEntryToInteraction)
-      .filter((entry): entry is NonNullable<ReturnType<typeof inboxEntryToInteraction>> => entry !== null);
+    const readableInbox = await resolveReadableInboxEntries(inboxPage.entries);
+    const entries = readableInbox.entries;
+    const items = normalizeInboxEntriesForAgent(entries);
 
     if (json) {
       output({
-        entries,
-        messages,
-        interactions,
-        next_cursor: inboxPage.nextCursor,
-        warnings: decryptionWarnings,
+        ok: true,
+        schema: 'asp.inbox.v2',
+        items,
+        page: {
+          next_cursor: inboxPage.nextCursor,
+        },
+        warnings: readableInbox.warnings,
       }, true);
       return;
     }
@@ -269,10 +298,10 @@ export const inboxCommand = new Command('inbox')
       console.log(`    Time: ${getInboxEntryCursor(entry)}`);
     }
 
-    if (decryptionWarnings.length > 0) {
+    if (readableInbox.warnings.length > 0) {
       console.log('');
       console.log(
-        `Warning: ${decryptionWarnings.length} encrypted inbox entr${decryptionWarnings.length === 1 ? 'y could' : 'ies could'} not be decrypted locally.`,
+        `Warning: ${readableInbox.warnings.length} encrypted inbox entr${readableInbox.warnings.length === 1 ? 'y could' : 'ies could'} not be decrypted locally.`,
       );
     }
   });

@@ -121,6 +121,64 @@ describe('inbox command', () => {
     expect(logSpy).toHaveBeenCalledWith('Warning: 1 encrypted inbox entry could not be decrypted locally.');
   });
 
+  it('returns one normalized item array in json mode without duplicate projections', async () => {
+    const { inboxCommand, output } = await loadInboxCommand({
+      entries: [{
+        id: 'msg-1',
+        from: 'https://bob.asp.social',
+        to: 'https://alice.asp.social',
+        kind: 'message',
+        type: 'chat',
+        timestamp: '2026-03-31T10:00:00.000Z',
+        received_at: '2026-03-31T10:00:01.000Z',
+        signature: 'sig',
+        initiated_by: 'human',
+        thread_id: 'thread-1',
+        content: {
+          text: 'hello',
+        },
+      }],
+    });
+    vi.spyOn(inboxCommand, 'optsWithGlobals').mockReturnValue({ json: true } as never);
+
+    await inboxCommand.parseAsync([], { from: 'user' });
+
+    const payload = output.mock.calls[0][0] as Record<string, unknown>;
+    expect(payload).toMatchObject({
+      ok: true,
+      schema: 'asp.inbox.v2',
+      page: { next_cursor: null },
+      warnings: [],
+    });
+    expect(payload).not.toHaveProperty('messages');
+    expect(payload).not.toHaveProperty('interactions');
+    expect(payload).not.toHaveProperty('entries');
+    expect(payload.items).toEqual([
+      expect.objectContaining({
+        resource: 'inbox_entry',
+        kind: 'message',
+        type: 'chat',
+        actor: expect.objectContaining({
+          id: 'https://bob.asp.social',
+          handle: 'bob',
+          display: '@bob',
+        }),
+        content: expect.objectContaining({
+          state: 'decrypted',
+          text: 'hello',
+          preview: 'hello',
+        }),
+        affordances: {
+          reply: {
+            to: 'https://bob.asp.social',
+            reply_to: 'msg-1',
+            thread_id: 'thread-1',
+          },
+        },
+      }),
+    ]);
+  });
+
   it('delegates inbox --follow to the foreground follow runtime', async () => {
     const { inboxCommand, runInboxFollow } = await loadInboxCommand();
 

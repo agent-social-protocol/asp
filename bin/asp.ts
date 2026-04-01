@@ -1,4 +1,4 @@
 #!/usr/bin/env node
-import { program } from '../src/cli.js';
+import { runCli } from '../src/cli-runner.js';
 
-program.parse();
+process.exitCode = await runCli(process.argv);

@@ -3,7 +3,9 @@ import { storeInitialized } from '../store/index.js';
 import { readFollowing } from '../store/following-store.js';
 import { fetchFeed } from '../utils/fetch-feed.js';
 import { output } from '../utils/output.js';
+import { outputCliError } from '../utils/cli-error.js';
 import type { FeedEntry } from '../models/feed-entry.js';
+import { normalizeFeedEntriesForAgent } from '../utils/agent-items.js';
 
 interface MergedEntry extends FeedEntry {
   source: string;
@@ -18,7 +20,12 @@ export const feedCommand = new Command('feed')
     const json = cmd.optsWithGlobals().json;
 
     if (!storeInitialized()) {
-      output(json ? { error: 'Not initialized' } : 'Not initialized. Run `asp init` first.', json);
+      outputCliError({
+        code: 'not_initialized',
+        message: 'Not initialized',
+        hint: 'Run `asp init` first.',
+        human: 'Not initialized. Run `asp init` first.',
+      }, json);
       process.exitCode = 1;
       return;
     }
@@ -29,7 +36,17 @@ export const feedCommand = new Command('feed')
     }
 
     if (subs.length === 0) {
-      output(json ? { entries: [] } : 'Not following anyone. Run `asp follow @handle` first.', json);
+      if (json) {
+        output({
+          ok: true,
+          schema: 'asp.feed.v2',
+          counts: { items: 0 },
+          items: [],
+          warnings: [],
+        }, true);
+      } else {
+        output('Not following anyone. Run `asp follow @handle` first.', false);
+      }
       return;
     }
 
@@ -69,7 +86,19 @@ export const feedCommand = new Command('feed')
     filtered.sort((a, b) => new Date(b.published).getTime() - new Date(a.published).getTime());
 
     if (json) {
-      output({ entries: filtered, errors: errors.length ? errors : undefined }, true);
+      output({
+        ok: true,
+        schema: 'asp.feed.v2',
+        counts: {
+          items: filtered.length,
+        },
+        items: normalizeFeedEntriesForAgent(filtered),
+        warnings: errors.map((entry) => ({
+          code: 'feed_fetch_failed',
+          source: entry.source,
+          message: entry.error,
+        })),
+      }, true);
       return;
     }
 
