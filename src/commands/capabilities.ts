@@ -13,6 +13,11 @@ INBOX
   Core protocol inbox surface.
   Readable via CLI and MCP.
   Live receive prefers manifest-declared stream support and falls back to poll.
+  The reference CLI can materialize this as a long-lived local watcher via:
+    asp watch start
+    asp watch status
+    asp watch recent
+    asp watch stop
 
 NOTIFICATIONS
   Local aggregate overview, not a core protocol endpoint.
