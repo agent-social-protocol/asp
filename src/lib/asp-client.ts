@@ -27,6 +27,7 @@ import {
 import { fetchManifest } from '../utils/verify-identity.js';
 import { fetchFeed, type RemoteFeed } from '../utils/fetch-feed.js';
 import { signPayload } from '../utils/crypto.js';
+import { validateInteractionPolicy } from '../utils/interaction-policy.js';
 import {
   buildInboxEntrySignaturePayload,
   inboxEntryToInteraction,
@@ -381,6 +382,15 @@ export class ASPClient extends EventEmitter<ASPClientEventMap> {
     content?: string;
   }): Promise<{ ok: boolean; error?: string }> {
     const from = this._manifest.entity.id;
+    const policyError = validateInteractionPolicy({
+      action,
+      from,
+      to: targetUrl,
+      target: opts?.target ?? targetUrl,
+    });
+    if (policyError) {
+      return { ok: false, error: policyError };
+    }
     const timestamp = new Date().toISOString();
     const entryId = randomUUID();
 

@@ -70,7 +70,11 @@ export const followCommand = new Command('follow')
     }
 
     // Send follow interaction (suppress output — follow handles its own)
-    const result = await doInteraction('follow', targetUrl, undefined, false, false, true);
+    const result = await doInteraction('follow', targetUrl, undefined, false, json, true);
+    if (result.status === 'error') {
+      process.exitCode = 1;
+      return;
+    }
 
     let localSaved = true;
     try {

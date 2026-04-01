@@ -61,6 +61,41 @@ describe('protocol schemas', () => {
     expect(invalid.success).toBe(false);
   });
 
+  it('rejects self-follow and endpoint-like inbox interactions', () => {
+    const selfFollow = InboxEntrySchema.safeParse({
+      id: 'follow-1',
+      from: 'https://alice.asp.social',
+      to: 'https://alice.asp.social',
+      kind: 'interaction',
+      type: 'follow',
+      target: 'https://alice.asp.social',
+      timestamp: new Date().toISOString(),
+    });
+    expect(selfFollow.success).toBe(false);
+
+    const endpointLike = InboxEntrySchema.safeParse({
+      id: 'like-1',
+      from: 'https://bob.asp.social',
+      to: 'https://alice.asp.social',
+      kind: 'interaction',
+      type: 'like',
+      target: 'https://alice.asp.social',
+      timestamp: new Date().toISOString(),
+    });
+    expect(endpointLike.success).toBe(false);
+
+    const postLike = InboxEntrySchema.safeParse({
+      id: 'like-2',
+      from: 'https://bob.asp.social',
+      to: 'https://alice.asp.social',
+      kind: 'interaction',
+      type: 'like',
+      target: 'https://alice.asp.social/asp/feed#post-1',
+      timestamp: new Date().toISOString(),
+    });
+    expect(postLike.success).toBe(true);
+  });
+
   it('validates FeedEntry with signal_type and metadata', () => {
     const base = {
       id: 'post-1',

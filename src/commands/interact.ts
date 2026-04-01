@@ -10,6 +10,7 @@ import { output } from '../utils/output.js';
 import { resolveEndpoint, parsePostUrl } from '../identity/resolve-target.js';
 import type { Interaction } from '../models/interaction.js';
 import { buildInboxEntrySignaturePayload, interactionToInboxEntry } from '../utils/inbox-entry.js';
+import { validateInteractionPolicy } from '../utils/interaction-policy.js';
 
 export interface InteractionResult {
   status: 'sent' | 'saved_locally' | 'error';
@@ -42,6 +43,18 @@ export async function doInteraction(action: string, target: string, content: str
     ...(!isLocal && from && { from }),
   };
 
+  const policyError = validateInteractionPolicy({
+    action,
+    from,
+    to: target,
+    target: interaction.target,
+  });
+  if (policyError) {
+    output(json ? { status: 'error', error: policyError } : policyError, json);
+    process.exitCode = 1;
+    return { status: 'error', remote_notified: false, saved_locally: false, error: policyError };
+  }
+
   // Auto-sign if private key exists and sending remotely
   const { privateKeyPath } = getStorePaths();
   if (!isLocal && from && existsSync(privateKeyPath)) {
@@ -58,7 +71,7 @@ export async function doInteraction(action: string, target: string, content: str
     const result = await sendInteraction(target, interaction);
     if (!result.ok) {
       const warning = `Could not notify: ${result.error}`;
-      if (json) {
+      if (json && !silent) {
         output({ status: 'saved_locally', remote_notified: false, saved_locally: true, warning, interaction }, true);
       } else if (!silent) {
         console.log(`${action} saved locally (${warning})`);
@@ -67,7 +80,7 @@ export async function doInteraction(action: string, target: string, content: str
     }
   }
 
-  if (json) {
+  if (json && !silent) {
     output({
       status: isLocal ? 'saved_locally' : 'sent',
       remote_notified: !isLocal,

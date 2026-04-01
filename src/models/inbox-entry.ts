@@ -1,5 +1,6 @@
 import * as z from 'zod/v4';
 import { MessageAttachmentSchema, MessageInitiatorSchema } from './message.js';
+import { isAspPostUrl } from '../utils/interaction-policy.js';
 
 const JsonRecordSchema = z.record(z.string(), z.unknown());
 
@@ -89,8 +90,14 @@ export function validateInboxEntry(
   }
 
   if (entry.kind === 'interaction') {
+    if (entry.type === 'follow' && entry.from.replace(/\/+$/, '') === entry.to.replace(/\/+$/, '')) {
+      return 'Interaction type "follow" cannot target self';
+    }
     if (entry.type === 'like' && !entry.target) {
       return 'Interaction type "like" requires target';
+    }
+    if (entry.type === 'like' && entry.target && !isAspPostUrl(entry.target)) {
+      return 'Interaction type "like" requires ASP post target';
     }
     if (entry.type === 'comment') {
       if (!entry.target) return 'Interaction type "comment" requires target';

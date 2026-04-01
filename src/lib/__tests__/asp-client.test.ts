@@ -1091,6 +1091,20 @@ describe('ASPClient', () => {
       expect(result.error).toBeDefined();
     });
 
+    it('interact rejects self-follow before sending', async () => {
+      const client = new ASPClient({ identityDir: tmpDir });
+      const result = await client.interact('https://alice.asp.social', 'follow');
+      expect(result.ok).toBe(false);
+      expect(result.error).toBe('Cannot follow yourself');
+    });
+
+    it('interact rejects likes that do not target a post URL', async () => {
+      const client = new ASPClient({ identityDir: tmpDir });
+      const result = await client.interact('https://bob.asp.social', 'like');
+      expect(result.ok).toBe(false);
+      expect(result.error).toBe('Like interactions require an ASP post URL target');
+    });
+
     it('interact without private key sends unsigned', async () => {
       fs.unlinkSync(path.join(tmpDir, 'private.pem'));
       const client = new ASPClient({ identityDir: tmpDir });

@@ -104,4 +104,20 @@ describe('follow command', () => {
     expect(logSpy).toHaveBeenCalledWith('\n  ✗ Could not follow @bob');
     expect(process.exitCode).toBe(1);
   });
+
+  it('stops before mutating following state when self-follow is rejected', async () => {
+    const { followCommand, addFollowing } = await loadFollowCommand({
+      interactionResult: {
+        status: 'error',
+        remote_notified: false,
+        saved_locally: false,
+        error: 'Cannot follow yourself',
+      },
+    });
+
+    await followCommand.parseAsync(['@bob'], { from: 'user' });
+
+    expect(addFollowing).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(1);
+  });
 });
