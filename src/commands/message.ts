@@ -36,7 +36,7 @@ function parseInboxDirection(direction: string): 'sent' | 'received' {
 export const messageCommand = new Command('message')
   .description('Send a message to another agent')
   .argument('<target>', 'Target (@handle, domain, or URL)')
-  .option('--intent <intent>', 'Message intent (open string: inform, invite, negotiate, accept, counter, reject, ...)', 'inform')
+  .option('--intent <intent>', 'Message intent (open string: chat, inform, invite, negotiate, accept, counter, reject, ...)', 'chat')
   .option('--text <text>', 'Message text')
   .option('--data <json>', 'Structured payload as JSON string')
   .option('--attachment <url>', 'Attachment URL (repeatable)', (val: string, list: string[]) => [...list, val], [] as string[])

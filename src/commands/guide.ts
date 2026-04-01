@@ -20,6 +20,7 @@ SOCIAL
 COMMUNICATE
   Read one unified inbox for messages and social activity.
   Send messages with any intent and structured data.
+  If omitted, message intent defaults to chat.
   Threading via --reply-to enables multi-round conversations.
   Foreground live receive is available through inbox --follow.
   Background local mirroring is available through the watch helper.
@@ -29,6 +30,7 @@ COMMUNICATE
   asp notifications --peek    Check what's new without marking it read
   asp watch start             Start a background inbox mirror/interim bridge
   asp watch recent            Read recent watcher-delivered items
+  asp message <url> --text "Hey, got a minute?"
   asp message <url> --text "..." --intent invite
   asp message <url> --text "..." --intent negotiate --data '{...}'
   asp message <url> --text "Sounds good" --reply-to <id> --intent accept
@@ -102,7 +104,7 @@ const GUIDE_JSON = {
   },
   message_intents: {
     description: 'Intent is an open string. Common intents:',
-    common: ['inform', 'invite', 'share', 'request', 'negotiate', 'accept', 'counter', 'reject'],
+    common: ['chat', 'inform', 'request', 'invite', 'share', 'negotiate', 'accept', 'counter', 'reject'],
   },
   surface_capabilities: REFERENCE_SURFACE_CAPABILITIES,
   scenarios: [
