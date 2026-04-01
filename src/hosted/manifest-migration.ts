@@ -1,3 +1,5 @@
+import { writeFileSync } from 'node:fs';
+import yaml from 'js-yaml';
 import { buildHostedEndpoint, normalizeHandle } from '../config/hosted.js';
 import type { Manifest } from '../models/manifest.js';
 
@@ -80,4 +82,24 @@ export function migrateLegacyHostedManifest(
     nextEndpoint,
     rewrittenEndpointFields,
   };
+}
+
+export function autoMigrateLegacyHostedManifestFile(
+  manifestPath: string,
+  manifest: Manifest,
+): void {
+  const migration = migrateLegacyHostedManifest(manifest);
+  if (!migration.ok) {
+    throw new Error(migration.error);
+  }
+  if (!migration.updated) {
+    return;
+  }
+
+  const nextRaw = yaml.dump(manifest, {
+    lineWidth: -1,
+    noRefs: true,
+    sortKeys: false,
+  });
+  writeFileSync(manifestPath, nextRaw, 'utf-8');
 }

@@ -252,15 +252,21 @@ const identityMigrateHostedEndpointCommand = new Command('migrate-hosted-endpoin
     }
 
     if (!migration.updated) {
+      const canonicalHostedEndpoint = isHostedEndpoint(manifest.entity.id);
       if (json) {
         output({
           status: 'unchanged',
           endpoint: manifest.entity.id,
+          reason: canonicalHostedEndpoint ? 'already_canonical_hosted' : 'not_legacy_hosted',
         }, true);
         return;
       }
 
-      console.log('\nHosted endpoint already uses the canonical domain.');
+      if (canonicalHostedEndpoint) {
+        console.log('\nHosted endpoint already uses the canonical domain.');
+      } else {
+        console.log('\nCurrent endpoint is not a legacy hosted endpoint.');
+      }
       console.log(`  Endpoint:  ${manifest.entity.id}`);
       return;
     }

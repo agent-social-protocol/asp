@@ -17,6 +17,7 @@ import { getInboxEntryCursor, type InboxEntryKind } from '../models/inbox-entry.
 import { inboxEntryToInteraction } from '../utils/inbox-entry.js';
 import { summarizeInboxEntry } from '../utils/inbox-display.js';
 import { readOwnInboxPage } from '../utils/own-inbox.js';
+import { runInboxFollow } from '../runtime/inbox-follow.js';
 
 function parseInboxKind(kind: string): InboxEntryKind {
   if (kind === 'message' || kind === 'interaction') {
@@ -145,6 +146,7 @@ export const messageCommand = new Command('message')
 
 export const inboxCommand = new Command('inbox')
   .description('View inbox activity')
+  .option('--follow', 'Keep streaming new inbox activity in the current terminal')
   .option('--thread <id>', 'Filter by thread ID')
   .option('--type <type>', 'Filter by inbox entry type')
   .option('--kind <kind>', 'Filter by inbox kind (message or interaction)', parseInboxKind)
@@ -155,6 +157,33 @@ export const inboxCommand = new Command('inbox')
     if (!storeInitialized()) {
       output(json ? { error: 'Not initialized' } : 'Not initialized. Run `asp init` first.', json);
       process.exitCode = 1;
+      return;
+    }
+
+    if (opts.follow) {
+      if (opts.direction !== 'received') {
+        output(
+          json
+            ? { error: '`asp inbox --follow` only supports received inbox activity' }
+            : '`asp inbox --follow` only supports received inbox activity.',
+          json,
+        );
+        process.exitCode = 1;
+        return;
+      }
+
+      try {
+        await runInboxFollow({
+          json,
+          thread: opts.thread,
+          type: opts.type,
+          kind: opts.kind,
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        output(json ? { error: message } : message, json);
+        process.exitCode = 1;
+      }
       return;
     }
 
@@ -174,6 +203,7 @@ export const inboxCommand = new Command('inbox')
     }
 
     let entries = inboxPage.entries;
+    const decryptionWarnings: Array<{ id: string; error: string }> = [];
 
     // Decrypt encrypted messages if we have the key
     const { encryptionKeyPath } = getStorePaths();
@@ -186,7 +216,11 @@ export const inboxCommand = new Command('inbox')
         }
         try {
           return messageToInboxEntry(decryptMessageContent(message, encPrivKey));
-        } catch {
+        } catch (error) {
+          decryptionWarnings.push({
+            id: entry.id,
+            error: error instanceof Error ? error.message : 'Could not decrypt message content',
+          });
           return entry;
         }
       });
@@ -205,6 +239,7 @@ export const inboxCommand = new Command('inbox')
         messages,
         interactions,
         next_cursor: inboxPage.nextCursor,
+        warnings: decryptionWarnings,
       }, true);
       return;
     }
@@ -232,5 +267,12 @@ export const inboxCommand = new Command('inbox')
         console.log(`    Target: ${entry.target}`);
       }
       console.log(`    Time: ${getInboxEntryCursor(entry)}`);
+    }
+
+    if (decryptionWarnings.length > 0) {
+      console.log('');
+      console.log(
+        `Warning: ${decryptionWarnings.length} encrypted inbox entr${decryptionWarnings.length === 1 ? 'y could' : 'ies could'} not be decrypted locally.`,
+      );
     }
   });

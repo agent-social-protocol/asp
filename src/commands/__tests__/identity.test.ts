@@ -42,6 +42,20 @@ function makeLegacyHostedManifest(): Manifest {
   };
 }
 
+function makeSelfHostedManifest(): Manifest {
+  return {
+    ...makeHostedManifest(),
+    entity: {
+      ...makeHostedManifest().entity,
+      id: 'https://alice.example.com',
+    },
+    endpoints: {
+      feed: 'https://alice.example.com/asp/feed',
+      inbox: 'https://alice.example.com/asp/inbox',
+    },
+  };
+}
+
 async function loadIdentityCommand(mocks: {
   manifest: Manifest;
   syncResult?: {
@@ -193,6 +207,27 @@ describe('identity migrate-hosted-endpoint', () => {
       stream: 'https://alice.asp.social/asp/ws',
     });
     expect(syncHostedManifestTargets).toHaveBeenCalledWith(updatedManifest);
+    expect(process.exitCode).toBeUndefined();
+  });
+
+  it('reports self-hosted endpoints as unchanged without claiming they are canonical hosted identities', async () => {
+    const manifest = makeSelfHostedManifest();
+    const {
+      identityCommand,
+      writeManifest,
+      syncHostedManifestTargets,
+    } = await loadIdentityCommand({ manifest });
+
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    await identityCommand.parseAsync([
+      'migrate-hosted-endpoint',
+    ], { from: 'user' });
+
+    expect(writeManifest).not.toHaveBeenCalled();
+    expect(syncHostedManifestTargets).not.toHaveBeenCalled();
+    expect(logSpy).toHaveBeenCalledWith('\nCurrent endpoint is not a legacy hosted endpoint.');
+    expect(logSpy).toHaveBeenCalledWith('  Endpoint:  https://alice.example.com');
     expect(process.exitCode).toBeUndefined();
   });
 });

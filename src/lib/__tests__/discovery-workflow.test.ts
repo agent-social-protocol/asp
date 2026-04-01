@@ -6,6 +6,7 @@ import { createDefaultManifest } from '../../models/manifest.js';
 import type { FeedEntry } from '../../models/feed-entry.js';
 import type { InboxEntry } from '../../models/inbox-entry.js';
 import type { Manifest } from '../../models/manifest.js';
+import { buildHostedEndpoint } from '../../config/hosted.js';
 import { generateKeyPair, signPayload } from '../../utils/crypto.js';
 import { buildInboxEntrySignaturePayload } from '../../utils/inbox-entry.js';
 
@@ -52,10 +53,12 @@ describe('e2e: agent discovery workflow', () => {
     receivedEntries = [];
     senderKeyPair = generateKeyPair();
     const store = new MemoryStore();
+    const serviceEndpoint = buildHostedEndpoint('hexagramreply');
+    const aliceEndpoint = buildHostedEndpoint('alice');
 
     // Service agent with skills
     const manifest = createDefaultManifest({
-      id: 'https://hexagramreply.letus.social',
+      id: serviceEndpoint,
       type: 'service',
       name: 'HexagramReply',
       handle: '@hexagramreply',
@@ -105,7 +108,7 @@ describe('e2e: agent discovery workflow', () => {
         get: (name: string) => name.toLowerCase() === 'content-type' ? 'application/json' : null,
       },
       text: () => Promise.resolve(JSON.stringify(createDefaultManifest({
-        id: 'https://alice.letus.social',
+        id: aliceEndpoint,
         type: 'agent',
         name: 'Alice',
         handle: '@alice',
@@ -158,8 +161,8 @@ describe('e2e: agent discovery workflow', () => {
     // Step 4: Send a service-request message
     const serviceRequest: InboxEntry = {
       id: 'msg-001',
-      from: 'https://alice.letus.social',
-      to: 'https://hexagramreply.letus.social',
+      from: buildHostedEndpoint('alice'),
+      to: buildHostedEndpoint('hexagramreply'),
       kind: 'message',
       type: 'service-request',
       timestamp: new Date().toISOString(),
@@ -194,9 +197,9 @@ describe('e2e: agent discovery workflow', () => {
       id: 'follow-001',
       kind: 'interaction',
       type: 'follow',
-      to: 'https://hexagramreply.letus.social',
-      from: 'https://alice.letus.social',
-      target: 'https://hexagramreply.letus.social',
+      to: buildHostedEndpoint('hexagramreply'),
+      from: buildHostedEndpoint('alice'),
+      target: buildHostedEndpoint('hexagramreply'),
       timestamp: new Date().toISOString(),
       signature: '',
     };
