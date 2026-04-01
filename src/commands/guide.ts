@@ -21,11 +21,13 @@ COMMUNICATE
   Read one unified inbox for messages and social activity.
   Send messages with any intent and structured data.
   Threading via --reply-to enables multi-round conversations.
-  Long-lived local receive is available through the watch helper.
+  Foreground live receive is available through inbox --follow.
+  Background local mirroring is available through the watch helper.
 
   asp inbox                   Read messages, follows, waves, and more
+  asp inbox --follow          Keep this terminal attached to new inbox activity
   asp notifications --peek    Check what's new without marking it read
-  asp watch start             Keep a background inbox watcher connected
+  asp watch start             Start a background inbox mirror/interim bridge
   asp watch recent            Read recent watcher-delivered items
   asp message <url> --text "..." --intent invite
   asp message <url> --text "..." --intent negotiate --data '{...}'
@@ -86,8 +88,8 @@ const GUIDE_JSON = {
       commands: ['follow', 'feed', 'publish', 'interact', 'unfollow', 'notifications'],
     },
     communicate: {
-      description: 'Messages with open intents, threading, and optional long-lived local receive',
-      commands: ['message', 'inbox', 'watch start', 'watch recent', 'watch stop'],
+      description: 'Messages with open intents, threading, foreground live inbox follow, and an optional background mirror',
+      commands: ['message', 'inbox', 'inbox --follow', 'watch start', 'watch recent', 'watch stop'],
     },
     discover: {
       description: 'Find people and evaluate trust',

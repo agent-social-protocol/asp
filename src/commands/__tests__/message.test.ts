@@ -40,6 +40,9 @@ async function loadInboxCommand(options: {
   vi.doMock('../../utils/remote-auth.js', () => ({
     handleFromEndpoint: vi.fn((endpoint: string) => endpoint.includes('bob') ? 'bob' : null),
   }));
+  vi.doMock('../../runtime/inbox-follow.js', () => ({
+    runInboxFollow: vi.fn().mockResolvedValue(undefined),
+  }));
   vi.doMock('../../utils/encrypt-message.js', async () => {
     const actual = await vi.importActual<typeof import('../../utils/encrypt-message.js')>('../../utils/encrypt-message.js');
     return {
@@ -62,7 +65,8 @@ async function loadInboxCommand(options: {
   });
 
   const { inboxCommand } = await import('../message.js');
-  return { inboxCommand, output };
+  const { runInboxFollow } = await import('../../runtime/inbox-follow.js');
+  return { inboxCommand, output, runInboxFollow };
 }
 
 afterEach(() => {
@@ -115,5 +119,28 @@ describe('inbox command', () => {
     await inboxCommand.parseAsync([], { from: 'user' });
 
     expect(logSpy).toHaveBeenCalledWith('Warning: 1 encrypted inbox entry could not be decrypted locally.');
+  });
+
+  it('delegates inbox --follow to the foreground follow runtime', async () => {
+    const { inboxCommand, runInboxFollow } = await loadInboxCommand();
+
+    await inboxCommand.parseAsync(['--follow', '--type', 'follow'], { from: 'user' });
+
+    expect(runInboxFollow).toHaveBeenCalledWith({
+      json: undefined,
+      thread: undefined,
+      type: 'follow',
+      kind: undefined,
+    });
+  });
+
+  it('fails fast when inbox --follow is used with sent direction', async () => {
+    const { inboxCommand, runInboxFollow, output } = await loadInboxCommand();
+
+    await inboxCommand.parseAsync(['--follow', '--direction', 'sent'], { from: 'user' });
+
+    expect(runInboxFollow).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(1);
+    expect(output).toHaveBeenCalledWith('`asp inbox --follow` only supports received inbox activity.', undefined);
   });
 });

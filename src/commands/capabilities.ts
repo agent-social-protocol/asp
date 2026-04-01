@@ -13,7 +13,9 @@ INBOX
   Core protocol inbox surface.
   Readable via CLI and MCP.
   Live receive prefers manifest-declared stream support and falls back to poll.
-  The reference CLI can materialize this as a long-lived local watcher via:
+  The reference CLI exposes a foreground live view via:
+    asp inbox --follow
+  It also exposes a background local mirror/interim bridge via:
     asp watch start
     asp watch status
     asp watch recent

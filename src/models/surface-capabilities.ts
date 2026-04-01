@@ -89,7 +89,7 @@ export const REFERENCE_SURFACE_CAPABILITIES: SurfaceCapabilities = {
       preferred: 'stream',
       fallback: 'poll',
     },
-    notes: 'Core protocol inbox surface. The reference runtime can read it through CLI and MCP. Live receive prefers manifest-declared stream support and otherwise falls back to polling. The reference CLI also exposes a watch helper for long-lived local receive.',
+    notes: 'Core protocol inbox surface. The reference runtime can read it through CLI and MCP. Live receive prefers manifest-declared stream support and otherwise falls back to polling. The reference CLI exposes `inbox --follow` as the foreground live view and `watch` as a background local mirror/interim bridge.',
   },
   notifications: {
     kind: 'local-aggregate',
