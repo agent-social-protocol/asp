@@ -9,6 +9,7 @@ export interface StoreConfig {
 
 export interface StorePaths {
   storeDir: string;
+  runtimeDir: string;
   manifestPath: string;
   feedPath: string;
   followingPath: string;
@@ -39,6 +40,7 @@ export function getStorePaths(config: StoreConfig = {}): StorePaths {
   const storeDir = resolveStoreDir(config);
   return {
     storeDir,
+    runtimeDir: join(storeDir, '.runtime'),
     manifestPath: join(storeDir, 'manifest.yaml'),
     feedPath: join(storeDir, 'feed.yaml'),
     followingPath: join(storeDir, 'following.yaml'),

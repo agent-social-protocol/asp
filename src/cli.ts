@@ -24,6 +24,7 @@ import { deleteCommand } from './commands/delete.js';
 import { indexCommand } from './commands/index-cmd.js';
 import { identityCommand } from './commands/identity.js';
 import { toolsCommand } from './commands/tools.js';
+import { watchCommand } from './commands/watch.js';
 
 configureStoreDefaults({ storeDir: getCliRuntimeConfig().storeDir });
 
@@ -61,3 +62,4 @@ program.addCommand(capabilitiesCommand);
 program.addCommand(indexCommand);
 program.addCommand(identityCommand);
 program.addCommand(toolsCommand);
+program.addCommand(watchCommand);
