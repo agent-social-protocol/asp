@@ -2,27 +2,11 @@ import { Command } from 'commander';
 import { storeInitialized } from '../store/index.js';
 import { readFollowing } from '../store/following-store.js';
 import { readNotifications, updateLastChecked } from '../store/notification-store.js';
-import { readInbox } from '../store/inbox-store.js';
 import { fetchFeed } from '../utils/fetch-feed.js';
 import { output } from '../utils/output.js';
 import type { FeedEntry } from '../models/feed-entry.js';
-import type { InboxEntry } from '../models/inbox-entry.js';
-
-function describeInboxEntry(entry: InboxEntry): string {
-  const actor = entry.from || 'Someone';
-  if (entry.kind === 'interaction') {
-    if (entry.type === 'comment') {
-      return `${actor} commented: "${entry.content?.text ?? ''}"`;
-    }
-    return `${actor} ${entry.type}: ${entry.target || 'you'}`;
-  }
-
-  const summary = entry.content?.text?.trim();
-  if (summary) {
-    return `${actor} sent ${entry.type}: "${summary}"`;
-  }
-  return `${actor} sent ${entry.type}`;
-}
+import { summarizeInboxEntry } from '../utils/inbox-display.js';
+import { readOwnInboxPage } from '../utils/own-inbox.js';
 
 export const notificationsCommand = new Command('notifications')
   .description('Check for new posts and inbox activity')
@@ -37,7 +21,6 @@ export const notificationsCommand = new Command('notifications')
 
     const notifs = await readNotifications();
     const subs = await readFollowing();
-    const inbox = await readInbox();
 
     // Fetch new posts since last check
     const newPosts: Array<FeedEntry & { source: string }> = [];
@@ -58,11 +41,19 @@ export const notificationsCommand = new Command('notifications')
       }
     }
 
-    // Get recent received inbox entries (since last check)
-    const lastChecked = new Date(notifs.last_checked).getTime();
-    const newEntries = inbox.received.filter(
-      (entry) => new Date(entry.received_at ?? entry.timestamp).getTime() > lastChecked
-    );
+    let newEntries;
+    try {
+      const inboxPage = await readOwnInboxPage({
+        direction: 'received',
+        since: notifs.last_checked,
+      });
+      newEntries = inboxPage.entries;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      output(json ? { error: message } : `Could not check inbox updates (${message})`, json);
+      process.exitCode = 1;
+      return;
+    }
 
     if (json) {
       output({ new_posts: newPosts, new_entries: newEntries }, true);
@@ -81,7 +72,7 @@ export const notificationsCommand = new Command('notifications')
         if (newEntries.length > 0) {
           console.log(`\n${newEntries.length} new inbox entr${newEntries.length === 1 ? 'y' : 'ies'}:\n`);
           for (const entry of newEntries) {
-            console.log(`  ${describeInboxEntry(entry)}`);
+            console.log(`  ${summarizeInboxEntry(entry)}`);
           }
         }
       }

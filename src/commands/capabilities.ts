@@ -18,7 +18,7 @@ NOTIFICATIONS
   Local aggregate overview, not a core protocol endpoint.
   Computed from:
     - followed feeds since last_checked
-    - local inbox entries since last_checked
+    - current identity inbox entries since last_checked
   Currently exposed via CLI only.
 
 FEEDS

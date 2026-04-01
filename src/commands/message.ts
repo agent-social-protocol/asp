@@ -1,20 +1,36 @@
-import { Command } from 'commander';
+import { Command, InvalidArgumentError } from 'commander';
 import { getStorePaths, storeInitialized } from '../store/index.js';
 import { readManifest } from '../store/manifest-store.js';
-import { readInbox, addMessage, getReceivedMessages } from '../store/inbox-store.js';
+import { addMessage } from '../store/inbox-store.js';
 import { sendMessage } from '../utils/send-message.js';
 import { generateMessageId } from '../utils/id.js';
 import { output } from '../utils/output.js';
-import { isHosted, buildAuthHeader } from '../utils/remote-auth.js';
 import { getRecipientEncryptionKey, encryptMessageContent, isEncryptedMessage, decryptMessageContent } from '../utils/encrypt-message.js';
 import { readFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import type { Message } from '../models/message.js';
 import { signPayload } from '../utils/crypto.js';
 import { resolveEndpoint } from '../identity/resolve-target.js';
-import { buildEndpointPath, buildEndpointUrl } from '../utils/endpoint-url.js';
+import { buildEndpointUrl } from '../utils/endpoint-url.js';
 import { buildInboxEntrySignaturePayload, inboxEntryToMessage, messageToInboxEntry } from '../utils/inbox-entry.js';
-import { isInboxEntry } from '../models/inbox-entry.js';
+import { getInboxEntryCursor, type InboxEntryKind } from '../models/inbox-entry.js';
+import { inboxEntryToInteraction } from '../utils/inbox-entry.js';
+import { summarizeInboxEntry } from '../utils/inbox-display.js';
+import { readOwnInboxPage } from '../utils/own-inbox.js';
+
+function parseInboxKind(kind: string): InboxEntryKind {
+  if (kind === 'message' || kind === 'interaction') {
+    return kind;
+  }
+  throw new InvalidArgumentError('Inbox kind must be "message" or "interaction".');
+}
+
+function parseInboxDirection(direction: string): 'sent' | 'received' {
+  if (direction === 'sent' || direction === 'received') {
+    return direction;
+  }
+  throw new InvalidArgumentError('Inbox direction must be "sent" or "received".');
+}
 
 export const messageCommand = new Command('message')
   .description('Send a message to another agent')
@@ -128,9 +144,11 @@ export const messageCommand = new Command('message')
   });
 
 export const inboxCommand = new Command('inbox')
-  .description('View received messages')
+  .description('View inbox activity')
   .option('--thread <id>', 'Filter by thread ID')
-  .option('--intent <intent>', 'Filter by intent')
+  .option('--type <type>', 'Filter by inbox entry type')
+  .option('--kind <kind>', 'Filter by inbox kind (message or interaction)', parseInboxKind)
+  .option('--direction <direction>', 'Filter by direction (received or sent)', parseInboxDirection, 'received')
   .action(async (opts, cmd) => {
     const json = cmd.optsWithGlobals().json;
 
@@ -140,83 +158,79 @@ export const inboxCommand = new Command('inbox')
       return;
     }
 
-    let messages: Message[];
-
-    if (await isHosted()) {
-      const manifest = await readManifest();
-      if (!manifest) {
-        output(json ? { error: 'Manifest not found' } : 'Manifest not found.', json);
-        process.exitCode = 1;
-        return;
-      }
-      const endpoint = manifest.entity.id;
-      const inboxUrl = buildEndpointUrl(endpoint, '/asp/inbox');
-      const auth = await buildAuthHeader('GET', buildEndpointPath(endpoint, '/asp/inbox'));
-      const params = new URLSearchParams();
-      if (opts.thread) params.set('thread', opts.thread);
-      const qs = params.toString();
-      if (qs) {
-        inboxUrl.search = qs;
-      }
-      const res = await fetch(inboxUrl.toString(), {
-        headers: { Authorization: auth },
+    let inboxPage;
+    try {
+      inboxPage = await readOwnInboxPage({
+        direction: opts.direction,
+        thread: opts.thread,
+        kind: opts.kind,
+        type: opts.type,
       });
-      if (!res.ok) {
-        output(json ? { error: `Hub returned ${res.status}` } : `Could not fetch inbox (HTTP ${res.status})`, json);
-        process.exitCode = 1;
-        return;
-      }
-      const data = await res.json() as { entries?: unknown[] };
-      const hostedMessages = Array.isArray(data.entries)
-        ? data.entries
-          .filter((entry): entry is Parameters<typeof inboxEntryToMessage>[0] => isInboxEntry(entry))
-          .map((entry) => inboxEntryToMessage(entry))
-          .filter((entry): entry is Message => entry !== null)
-        : [];
-      messages = hostedMessages;
-      if (opts.intent) {
-        messages = messages.filter(m => m.intent === opts.intent);
-      }
-    } else {
-      messages = await getReceivedMessages();
-      if (opts.thread) {
-        messages = messages.filter(m => m.thread_id === opts.thread);
-      }
-      if (opts.intent) {
-        messages = messages.filter(m => m.intent === opts.intent);
-      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      output(json ? { error: message } : `Could not fetch inbox (${message})`, json);
+      process.exitCode = 1;
+      return;
     }
+
+    let entries = inboxPage.entries;
 
     // Decrypt encrypted messages if we have the key
     const { encryptionKeyPath } = getStorePaths();
     if (existsSync(encryptionKeyPath)) {
       const encPrivKey = await readFile(encryptionKeyPath, 'utf-8');
-      messages = messages.map(m => {
-        if (isEncryptedMessage(m)) {
-          try { return decryptMessageContent(m, encPrivKey); } catch { return m; }
+      entries = entries.map((entry) => {
+        const message = inboxEntryToMessage(entry);
+        if (!message || !isEncryptedMessage(message)) {
+          return entry;
         }
-        return m;
+        try {
+          return messageToInboxEntry(decryptMessageContent(message, encPrivKey));
+        } catch {
+          return entry;
+        }
       });
     }
 
+    const messages = entries
+      .map(inboxEntryToMessage)
+      .filter((entry): entry is Message => entry !== null);
+    const interactions = entries
+      .map(inboxEntryToInteraction)
+      .filter((entry): entry is NonNullable<ReturnType<typeof inboxEntryToInteraction>> => entry !== null);
+
     if (json) {
-      output({ messages }, true);
+      output({
+        entries,
+        messages,
+        interactions,
+        next_cursor: inboxPage.nextCursor,
+      }, true);
       return;
     }
 
-    if (messages.length === 0) {
-      console.log('No messages.');
+    if (entries.length === 0) {
+      console.log('No inbox entries.');
       return;
     }
 
-    console.log(`${messages.length} message(s):\n`);
-    for (const m of messages) {
-      console.log(`  [${m.intent}] ${m.from}`);
-      console.log(`    ID:   ${m.id}`);
-      console.log(`    Text: ${m.content.text}`);
-      if (m.reply_to) {
-        console.log(`    Reply to: ${m.reply_to}`);
+    const orderedEntries = [...entries].sort((a, b) => getInboxEntryCursor(b).localeCompare(getInboxEntryCursor(a)));
+
+    console.log(`${orderedEntries.length} inbox entr${orderedEntries.length === 1 ? 'y' : 'ies'}:\n`);
+    for (const entry of orderedEntries) {
+      console.log(`  [${entry.type}] ${summarizeInboxEntry(entry)}`);
+      console.log(`    ID:   ${entry.id}`);
+      console.log(`    From: ${entry.from}`);
+      if (entry.kind === 'message') {
+        if (entry.thread_id) {
+          console.log(`    Thread: ${entry.thread_id}`);
+        }
+        if (entry.reply_to) {
+          console.log(`    Reply to: ${entry.reply_to}`);
+        }
+      } else if (entry.target) {
+        console.log(`    Target: ${entry.target}`);
       }
-      console.log(`    Time: ${m.timestamp}`);
+      console.log(`    Time: ${getInboxEntryCursor(entry)}`);
     }
   });

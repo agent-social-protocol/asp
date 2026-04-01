@@ -39,7 +39,7 @@ export const InboxSurfaceDescriptorSchema = SurfaceDescriptorSchema.extend({
 export type InboxSurfaceDescriptor = z.infer<typeof InboxSurfaceDescriptorSchema>;
 
 export const NotificationsSurfaceDescriptorSchema = SurfaceDescriptorSchema.extend({
-  source: z.array(z.enum(['following-feed', 'local-inbox', 'last-checked-cursor'])),
+  source: z.array(z.enum(['following-feed', 'local-inbox', 'own-inbox', 'last-checked-cursor'])),
 });
 export type NotificationsSurfaceDescriptor = z.infer<typeof NotificationsSurfaceDescriptorSchema>;
 
@@ -100,8 +100,8 @@ export const REFERENCE_SURFACE_CAPABILITIES: SurfaceCapabilities = {
       mcp: false,
       native: false,
     },
-    source: ['following-feed', 'local-inbox', 'last-checked-cursor'],
-    notes: 'Notifications are a local overview built from followed feeds plus local inbox entries since last_checked. This is not a core protocol endpoint today.',
+    source: ['following-feed', 'own-inbox', 'last-checked-cursor'],
+    notes: 'Notifications are a local overview built from followed feeds plus the current identity inbox since last_checked. Hosted identities read their own protocol inbox; self-hosted identities read local inbox state. This is not a core protocol endpoint today.',
   },
   feed: {
     merged_read: {

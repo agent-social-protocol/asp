@@ -2,7 +2,6 @@ import { Command } from 'commander';
 import { storeInitialized } from '../store/index.js';
 import { readManifest } from '../store/manifest-store.js';
 import { readFollowing } from '../store/following-store.js';
-import { readInbox } from '../store/inbox-store.js';
 import { readFeed } from '../store/feed-store.js';
 import { readNotifications } from '../store/notification-store.js';
 import { readRelationships } from '../store/relationship-store.js';
@@ -11,6 +10,7 @@ import { readBehavior } from '../store/behavior-store.js';
 import { output } from '../utils/output.js';
 import { isHosted, handleFromEndpoint } from '../utils/remote-auth.js';
 import { buildHostedProfileUrl } from '../config/hosted.js';
+import { readOwnInboxPage } from '../utils/own-inbox.js';
 
 export const statusCommand = new Command('status')
   .description('Show current ASP node status — identity, network, and activity overview')
@@ -25,17 +25,30 @@ export const statusCommand = new Command('status')
 
     const manifest = await readManifest();
     const followingList = await readFollowing();
-    const inbox = await readInbox();
     const feed = await readFeed();
     const notifications = await readNotifications();
     const relationships = await readRelationships();
     const indexes = await readIndexes();
     const behavior = await readBehavior();
 
+    let inboxEntryCount: number;
+    let newInboxEntries: number;
+    try {
+      const [inboxPage, newInboxPage] = await Promise.all([
+        readOwnInboxPage({ direction: 'received' }),
+        readOwnInboxPage({ direction: 'received', since: notifications.last_checked }),
+      ]);
+      inboxEntryCount = inboxPage.entries.length;
+      newInboxEntries = newInboxPage.entries.length;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      output(json ? { error: message } : `Could not read inbox (${message})`, json);
+      process.exitCode = 1;
+      return;
+    }
+
     const entity = manifest?.entity;
-    const inboxEntryCount = inbox.received.length;
     const newPosts = notifications.new_posts.length;
-    const newInboxEntries = notifications.new_entries.length;
 
     if (json) {
       output({
