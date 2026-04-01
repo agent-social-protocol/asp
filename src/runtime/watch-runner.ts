@@ -4,10 +4,38 @@ import type { ASPDeliveryMode } from '../lib/types.js';
 import { getStorePaths } from '../store/index.js';
 import { summarizeInboxEntry } from '../utils/inbox-display.js';
 import {
-  appendInboxWatchJournal,
-  patchInboxWatchState,
-  readInboxWatchState,
+  readInboxWatchJournal,
+  writeInboxWatchJournal,
+  writeInboxWatchState,
+  type InboxWatchJournalRecord,
+  type InboxWatchState,
 } from './watch-store.js';
+
+function toError(error: unknown): Error {
+  return error instanceof Error ? error : new Error(String(error));
+}
+
+function buildStartingState(startedAt: string): InboxWatchState {
+  return {
+    status: 'starting',
+    pid: process.pid,
+    mode: 'none',
+    started_at: startedAt,
+    updated_at: startedAt,
+    last_event_at: null,
+    last_error: null,
+    event_count: 0,
+    last_entry_id: null,
+    last_entry_summary: null,
+  };
+}
+
+function withUpdatedAt(state: InboxWatchState): InboxWatchState {
+  return {
+    ...state,
+    updated_at: new Date().toISOString(),
+  };
+}
 
 export async function runInboxWatcher(input: {
   daemonChild?: boolean;
@@ -15,32 +43,87 @@ export async function runInboxWatcher(input: {
 } = {}): Promise<void> {
   const client = new ASPClient({ identityDir: getStorePaths().storeDir });
   const startedAt = new Date().toISOString();
+  let state = buildStartingState(startedAt);
+  let journal = await readInboxWatchJournal();
   let stopped = false;
-
-  await patchInboxWatchState({
-    status: 'starting',
-    pid: process.pid,
-    mode: 'none',
-    started_at: startedAt,
-    last_error: null,
-    event_count: 0,
-    last_event_at: null,
-    last_entry_id: null,
-    last_entry_summary: null,
+  let persistenceFailed = false;
+  let resolveShutdown!: () => void;
+  const shutdown = new Promise<void>((resolve) => {
+    resolveShutdown = resolve;
   });
+  let persistenceQueue = Promise.resolve();
 
-  process.send?.({
-    type: 'spawned',
-    pid: process.pid,
-    mode: client.deliveryMode,
-  });
+  const persistState = async () => {
+    state = withUpdatedAt(state);
+    await writeInboxWatchState(state);
+  };
+
+  const cleanupListeners = () => {
+    client.off('delivery_mode_changed', updateMode);
+    client.off('entry', handleEntry);
+    client.off('error', handleError);
+    process.off('SIGINT', signalStop);
+    process.off('SIGTERM', signalStop);
+    process.off('unhandledRejection', handleUnhandledRejection);
+    process.off('uncaughtException', handleUncaughtException);
+  };
+
+  const stopWithPersistenceFailure = async (failure: Error) => {
+    if (persistenceFailed) {
+      return;
+    }
+
+    persistenceFailed = true;
+    stopped = true;
+    client.disconnect();
+    state = {
+      ...state,
+      status: 'error',
+      pid: null,
+      mode: 'none',
+      last_error: failure.message,
+    };
+
+    try {
+      await persistState();
+    } catch {
+      if (!input.daemonChild && !input.quiet) {
+        console.error(`Inbox watcher persistence failed: ${failure.message}`);
+      }
+    }
+
+    cleanupListeners();
+    process.exitCode = 1;
+    resolveShutdown();
+  };
+
+  const enqueuePersistence = (task: () => Promise<void>) => {
+    if (stopped) {
+      return;
+    }
+
+    persistenceQueue = persistenceQueue
+      .then(async () => {
+        if (stopped) {
+          return;
+        }
+        await task();
+      })
+      .catch(async (error) => {
+        await stopWithPersistenceFailure(toError(error));
+      });
+  };
 
   const updateMode = (mode: ASPDeliveryMode) => {
-    void patchInboxWatchState((current) => ({
-      ...current,
-      status: 'running',
-      mode,
-    }));
+    enqueuePersistence(async () => {
+      state = {
+        ...state,
+        status: 'running',
+        mode,
+      };
+      await persistState();
+    });
+
     if (!input.daemonChild && !input.quiet) {
       console.log(`Inbox watcher mode: ${mode}`);
     }
@@ -48,86 +131,127 @@ export async function runInboxWatcher(input: {
 
   const handleEntry = (entry: InboxEntry) => {
     const summary = summarizeInboxEntry(entry);
-    void appendInboxWatchJournal(entry);
-    void patchInboxWatchState((current) => ({
-      ...current,
-      status: 'running',
-      mode: client.deliveryMode,
-      event_count: current.event_count + 1,
-      last_event_at: new Date().toISOString(),
-      last_entry_id: entry.id,
-      last_entry_summary: summary,
-      last_error: null,
-    }));
+    const receivedAt = new Date().toISOString();
+    const deliveryMode = client.deliveryMode;
+
+    enqueuePersistence(async () => {
+      const record: InboxWatchJournalRecord = {
+        received_at: receivedAt,
+        summary,
+        entry,
+      };
+      journal = await writeInboxWatchJournal([...journal, record]);
+      state = {
+        ...state,
+        status: 'running',
+        mode: deliveryMode,
+        event_count: state.event_count + 1,
+        last_event_at: receivedAt,
+        last_entry_id: entry.id,
+        last_entry_summary: summary,
+        last_error: null,
+      };
+      await persistState();
+    });
   };
 
   const handleError = (error: Error) => {
-    void patchInboxWatchState((current) => ({
-      ...current,
-      status: 'running',
-      mode: client.deliveryMode,
-      last_error: error.message,
-    }));
+    const deliveryMode = client.deliveryMode;
+
+    enqueuePersistence(async () => {
+      state = {
+        ...state,
+        status: 'running',
+        mode: deliveryMode,
+        last_error: error.message,
+      };
+      await persistState();
+    });
   };
 
   const stop = async (nextStatus: 'stopped' | 'error', error?: Error) => {
     if (stopped) {
       return;
     }
+
     stopped = true;
     client.disconnect();
-    await patchInboxWatchState((current) => ({
-      ...current,
+    await persistenceQueue;
+    if (persistenceFailed) {
+      return;
+    }
+    state = {
+      ...state,
       status: nextStatus,
       pid: null,
       mode: 'none',
-      last_error: error ? error.message : current.last_error,
-    }));
+      last_error: error ? error.message : state.last_error,
+    };
+
+    try {
+      await persistState();
+    } finally {
+      cleanupListeners();
+      if (nextStatus === 'error') {
+        process.exitCode = 1;
+      }
+      resolveShutdown();
+    }
   };
+
+  const signalStop = () => {
+    void stop('stopped');
+  };
+
+  const handleUnhandledRejection = (reason: unknown) => {
+    void stop('error', toError(reason));
+  };
+
+  const handleUncaughtException = (error: Error) => {
+    void stop('error', error);
+  };
+
+  await persistState();
+
+  if (input.daemonChild && typeof process.send === 'function') {
+    process.send({
+      type: 'spawned',
+      pid: process.pid,
+      mode: client.deliveryMode,
+    });
+  }
 
   client.on('delivery_mode_changed', updateMode);
   client.on('entry', handleEntry);
   client.on('error', handleError);
-
-  const signalStop = () => {
-    void stop('stopped').finally(() => process.exit(0));
-  };
-
   process.on('SIGINT', signalStop);
   process.on('SIGTERM', signalStop);
-  process.on('unhandledRejection', (reason) => {
-    const error = reason instanceof Error ? reason : new Error(String(reason));
-    void stop('error', error).finally(() => process.exit(1));
-  });
-  process.on('uncaughtException', (error) => {
-    void stop('error', error).finally(() => process.exit(1));
-  });
+  process.on('unhandledRejection', handleUnhandledRejection);
+  process.on('uncaughtException', handleUncaughtException);
 
   try {
     await client.connect();
-    await patchInboxWatchState((current) => ({
-      ...current,
-      status: 'running',
-      mode: client.deliveryMode,
-      started_at: current.started_at ?? startedAt,
-    }));
+    await persistenceQueue;
+    if (!stopped) {
+      state = {
+        ...state,
+        status: 'running',
+        mode: client.deliveryMode,
+        started_at: state.started_at ?? startedAt,
+      };
+      await persistState();
+    }
 
     if (!input.daemonChild && !input.quiet) {
       console.log(`Watching inbox via ${client.deliveryMode}. Press Ctrl+C to stop.`);
     }
   } catch (error) {
-    const failure = error instanceof Error ? error : new Error(String(error));
-    await stop('error', failure);
-    throw failure;
+    const failure = toError(error);
+    if (!stopped) {
+      await stop('error', failure);
+      throw failure;
+    }
   }
 
-  await new Promise<void>((resolve) => {
-    const interval = setInterval(async () => {
-      const state = await readInboxWatchState();
-      if (state.status === 'stopped' || state.status === 'error') {
-        clearInterval(interval);
-        resolve();
-      }
-    }, 1_000);
-  });
+  await shutdown;
 }

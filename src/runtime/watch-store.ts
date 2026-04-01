@@ -28,6 +28,10 @@ export interface InboxWatchJournalRecord {
   entry: InboxEntry;
 }
 
+function trimInboxWatchJournal(records: InboxWatchJournalRecord[]): InboxWatchJournalRecord[] {
+  return records.slice(-WATCH_JOURNAL_LIMIT);
+}
+
 function buildDefaultState(): InboxWatchState {
   return {
     status: 'stopped',
@@ -123,16 +127,19 @@ export async function readInboxWatchJournal(): Promise<InboxWatchJournalRecord[]
   });
 }
 
-export async function appendInboxWatchJournal(entry: InboxEntry): Promise<InboxWatchJournalRecord[]> {
+export async function writeInboxWatchJournal(records: InboxWatchJournalRecord[]): Promise<InboxWatchJournalRecord[]> {
   await ensureInboxWatchRuntimeDir();
   const { journalPath } = getInboxWatchPaths();
+  const trimmed = trimInboxWatchJournal(records);
+  await writeFile(journalPath, JSON.stringify(trimmed, null, 2));
+  return trimmed;
+}
+
+export async function appendInboxWatchJournal(entry: InboxEntry): Promise<InboxWatchJournalRecord[]> {
   const current = await readInboxWatchJournal();
-  current.push({
+  return writeInboxWatchJournal([...current, {
     received_at: new Date().toISOString(),
     summary: summarizeInboxEntry(entry),
     entry,
-  });
-  const trimmed = current.slice(-WATCH_JOURNAL_LIMIT);
-  await writeFile(journalPath, JSON.stringify(trimmed, null, 2));
-  return trimmed;
+  }]);
 }

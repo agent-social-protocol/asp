@@ -30,6 +30,7 @@ function buildState(overrides: Partial<InboxWatchState> = {}): InboxWatchState {
 }
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.restoreAllMocks();
   vi.resetModules();
 });
@@ -149,5 +150,47 @@ describe('watch control', () => {
       status: 'stopped',
     });
     expect(process.kill).toHaveBeenCalledWith(2468, 'SIGTERM');
+  });
+
+  it('returns timeout when the watcher does not exit after SIGTERM', async () => {
+    vi.useFakeTimers();
+
+    const readInboxWatchState = vi.fn()
+      .mockResolvedValueOnce(buildState({
+        status: 'running',
+        pid: 1357,
+        mode: 'stream',
+      }))
+      .mockResolvedValueOnce(buildState({
+        status: 'running',
+        pid: 1357,
+        mode: 'stream',
+      }));
+
+    vi.spyOn(process, 'kill').mockImplementation((_pid: number, signal?: number | NodeJS.Signals) => {
+      if (signal === 'SIGTERM' || signal === 0 || signal === undefined) {
+        return true as never;
+      }
+      return true as never;
+    });
+    vi.doMock('../watch-store.js', () => ({
+      readInboxWatchState,
+      patchInboxWatchState: vi.fn(),
+      readInboxWatchJournal: vi.fn().mockResolvedValue([]),
+    }));
+
+    const { stopInboxWatchDaemon } = await import('../watch-control.js');
+    const stopPromise = stopInboxWatchDaemon();
+    await vi.advanceTimersByTimeAsync(3_100);
+    const result = await stopPromise;
+
+    expect(result).toMatchObject({
+      status: 'timeout',
+      state: {
+        status: 'running',
+        pid: 1357,
+      },
+    });
+
   });
 });

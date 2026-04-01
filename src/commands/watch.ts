@@ -134,11 +134,20 @@ const watchStopCommand = new Command('stop')
       const result = await stopInboxWatchDaemon();
       if (json) {
         output(result, true);
+        if (result.status === 'timeout') {
+          process.exitCode = 1;
+        }
         return;
       }
 
       if (result.status === 'not_running') {
         console.log('Inbox watcher is not running.');
+        return;
+      }
+
+      if (result.status === 'timeout') {
+        console.log('Timed out stopping inbox watcher; it is still running.');
+        process.exitCode = 1;
         return;
       }
 

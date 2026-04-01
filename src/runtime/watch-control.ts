@@ -9,8 +9,29 @@ import {
   type InboxWatchState,
 } from './watch-store.js';
 
+interface SpawnedMessage {
+  type: 'spawned';
+  pid: number;
+  mode?: ASPDeliveryMode;
+}
+
 export interface InboxWatchStatusView extends InboxWatchState {
   running: boolean;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+function isDeliveryMode(value: unknown): value is ASPDeliveryMode {
+  return value === 'none' || value === 'poll' || value === 'stream';
+}
+
+function isSpawnedMessage(value: unknown): value is SpawnedMessage {
+  return isRecord(value)
+    && value.type === 'spawned'
+    && typeof value.pid === 'number'
+    && (value.mode === undefined || isDeliveryMode(value.mode));
 }
 
 function isProcessAlive(pid: number | null): boolean {
@@ -93,16 +114,25 @@ export async function startInboxWatchDaemon(input: {
 export async function stopInboxWatchDaemon(): Promise<
   | { status: 'not_running'; state: InboxWatchStatusView }
   | { status: 'stopped'; state: InboxWatchStatusView }
+  | { status: 'timeout'; state: InboxWatchStatusView }
 > {
   const current = await resolveStatusView();
   if (!current.running || !current.pid) {
     return { status: 'not_running', state: current };
   }
 
-  process.kill(current.pid, 'SIGTERM');
-  await waitForProcessExit(current.pid);
+  try {
+    process.kill(current.pid, 'SIGTERM');
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ESRCH') {
+      return { status: 'not_running', state: await resolveStatusView() };
+    }
+    throw error;
+  }
+
+  const exited = await waitForProcessExit(current.pid);
   const state = await resolveStatusView();
-  return { status: 'stopped', state };
+  return { status: exited ? 'stopped' : 'timeout', state };
 }
 
 async function waitForDaemonSpawn(child: ChildProcess): Promise<{ pid: number; mode: ASPDeliveryMode }> {
@@ -120,19 +150,14 @@ async function waitForDaemonSpawn(child: ChildProcess): Promise<{ pid: number; m
     };
 
     const onMessage = (message: unknown) => {
-      if (!message || typeof message !== 'object') {
-        return;
-      }
-
-      const payload = message as { type?: string; pid?: number; mode?: ASPDeliveryMode };
-      if (payload.type !== 'spawned' || typeof payload.pid !== 'number') {
+      if (!isSpawnedMessage(message)) {
         return;
       }
 
       cleanup();
       resolve({
-        pid: payload.pid,
-        mode: payload.mode ?? 'none',
+        pid: message.pid,
+        mode: message.mode ?? 'none',
       });
     };
 
@@ -152,12 +177,13 @@ async function waitForDaemonSpawn(child: ChildProcess): Promise<{ pid: number; m
   });
 }
 
-async function waitForProcessExit(pid: number): Promise<void> {
+async function waitForProcessExit(pid: number): Promise<boolean> {
   const deadline = Date.now() + 3_000;
   while (Date.now() < deadline) {
     if (!isProcessAlive(pid)) {
-      return;
+      return true;
     }
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
+  return !isProcessAlive(pid);
 }
