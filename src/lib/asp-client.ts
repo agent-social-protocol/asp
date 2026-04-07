@@ -459,7 +459,10 @@ export class ASPClient extends EventEmitter<ASPClientEventMap> {
 
   async getMessages(opts?: Omit<ASPInboxReadOptions, 'kind'>): Promise<Message[]> {
     const { entries } = await this._transport.getInbox(this._runtime(), { ...opts, kind: 'message' });
-    return entries.map(inboxEntryToMessage).filter((entry): entry is Message => !!entry);
+    return entries
+      .map(inboxEntryToMessage)
+      .filter((entry): entry is Message => !!entry)
+      .map((entry) => this._resolveReadableMessage(entry));
   }
 
   async getInteractions(opts?: Omit<ASPInboxReadOptions, 'kind' | 'type'> & { type?: string }): Promise<Interaction[]> {
@@ -830,15 +833,7 @@ export class ASPClient extends EventEmitter<ASPClientEventMap> {
 
     const maybeMessage = inboxEntryToMessage(entry);
     if (maybeMessage) {
-      let emitMsg = maybeMessage;
-      if (this._encryptionKey && isEncryptedMessage(maybeMessage)) {
-        try {
-          emitMsg = decryptMessageContent(maybeMessage, this._encryptionKey);
-        } catch {
-          // Preserve encrypted payloads on decryption failure instead of silently dropping them.
-        }
-      }
-      this.emit('message', emitMsg);
+      this.emit('message', this._resolveReadableMessage(maybeMessage));
     }
 
     const maybeInteraction = inboxEntryToInteraction(entry);
@@ -1030,6 +1025,19 @@ export class ASPClient extends EventEmitter<ASPClientEventMap> {
   private _emitClientError(error: unknown): void {
     if (this.listenerCount('error') > 0) {
       this.emit('error', error instanceof Error ? error : new Error(String(error)));
+    }
+  }
+
+  private _resolveReadableMessage(message: Message): Message {
+    if (!this._encryptionKey || !isEncryptedMessage(message)) {
+      return message;
+    }
+
+    try {
+      return decryptMessageContent(message, this._encryptionKey);
+    } catch {
+      // Preserve encrypted payloads on decryption failure instead of silently dropping them.
+      return message;
     }
   }
 }

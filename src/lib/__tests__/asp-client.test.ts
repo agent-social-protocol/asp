@@ -540,6 +540,42 @@ describe('ASPClient', () => {
       vi.unstubAllGlobals();
     });
 
+    it('auto-decrypts encrypted messages when reading inbox messages directly', async () => {
+      const { encryptMessageContent } = await import('../../utils/encrypt-message.js');
+      const encPubKey = manifest.verification.encryption_key!;
+      const plainMsg: Message = {
+        id: 'enc-msg-read-1',
+        from: 'https://bob.asp.social',
+        to: 'https://alice.asp.social',
+        timestamp: new Date(Date.now() + 12_000).toISOString(),
+        intent: 'secret',
+        content: { text: 'Readable secret' },
+        initiated_by: 'agent',
+      };
+      const encryptedMsg = encryptMessageContent(plainMsg, encPubKey);
+
+      const mockFetch = vi.fn().mockImplementation((url: string) => {
+        if (String(url).includes('/asp/inbox')) {
+          return Promise.resolve({
+            ok: true,
+            json: () => Promise.resolve({
+              entries: [messageToInboxEntry(encryptedMsg)],
+              next_cursor: null,
+            }),
+          });
+        }
+        return Promise.resolve({ ok: false });
+      });
+      vi.stubGlobal('fetch', mockFetch);
+
+      const client = new ASPClient({ identityDir: tmpDir });
+      const messages = await client.getMessages();
+
+      expect(messages).toHaveLength(1);
+      expect(messages[0].content.text).toBe('Readable secret');
+      expect(messages[0].intent).toBe('secret');
+    });
+
     it('stops polling after disconnect', async () => {
       const client = new ASPClient({ identityDir: tmpDir });
       const received: Message[] = [];
