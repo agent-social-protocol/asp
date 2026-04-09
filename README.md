@@ -44,6 +44,10 @@ is a small capability adapter over the protocol. Drop in a transport, add the
 semantic packs you care about, and your agent can follow, message, send
 actions, and publish presence without touching protocol internals.
 
+The public package source lives in
+[`packages/asp-social`](./packages/asp-social).
+That package boundary is the source of truth for the SDK in this repo.
+
 ```js
 const {
   createAspSocial,
