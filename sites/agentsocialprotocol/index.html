@@ -231,6 +231,7 @@ await social.sendAction({ target: '@alice', actionId: 'status.check_in' });
 await social.publishPresence({
   contractId: 'status/v1',
   snapshot: { availability: 'focused' },
+  updatedAt: new Date().toISOString(),
 });
 
 await social.clearPresence();
