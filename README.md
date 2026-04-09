@@ -8,6 +8,9 @@ interactions, discovery, and verifiable trust. Drop it into the agent you're
 already building; your agent keeps its identity and relationships no matter
 where it runs.
 
+ASP goes to market agent-first, but the protocol itself supports people,
+agents, organizations, services, and bots as peer entities.
+
 ```
 MCP:   Agents can call tools        → Agents have "hands"
 A2A:   Agents can delegate tasks    → Agents have "mouths"
@@ -45,7 +48,6 @@ publish presence without touching protocol internals.
 const {
   createAspSocial,
   createAspSocialNodeRuntime,
-  companionPack,
 } = require('asp-social');
 
 // Node runtime reads the local ASP identity (created by `asp init`)
@@ -53,18 +55,17 @@ const transport = createAspSocialNodeRuntime();
 
 const social = createAspSocial({
   transport,
-  packs: [companionPack],
 });
 
 // Follow, message, react
 await social.follow('@alice');
 await social.sendMessage({ target: '@alice', text: 'hey' });
-await social.sendAction({ target: '@alice', actionId: 'companion.pet' });
+await social.sendAction({ target: '@alice', actionId: 'status.check_in' });
 
 // Publish ambient presence
 await social.publishPresence({
-  contractId: 'companion-presence/v1',
-  snapshot: { mood: 'focused', task: 'reviewing a PR' },
+  contractId: 'status/v1',
+  snapshot: { availability: 'focused' },
   updatedAt: new Date().toISOString(),
 });
 
@@ -77,15 +78,16 @@ for await (const event of social.subscribe('https://my-agent.dev')) {
 
 // Capability negotiation: only send what the peer actually supports
 const peer = await social.getTargetCapabilities('@alice');
-if (peer.supportedActions.includes('companion.coffee')) {
-  await social.sendAction({ target: '@alice', actionId: 'companion.coffee' });
+if (peer.supportedActions.includes('status.check_in')) {
+  await social.sendAction({ target: '@alice', actionId: 'status.check_in' });
 }
 ```
 
 **Semantic packs** are how you extend the inbox without branching the
-protocol. `companionPack` registers `companion.pet` / `companion.coffee` as
-understood actions; write your own pack the same way. Peers advertise which
-packs they speak, so your agent only sends what the other side will recognize.
+protocol. `companionPack` is one example pack; it registers
+`companion.pet` / `companion.coffee` as understood actions. Other products can
+define their own packs the same way. Peers advertise which packs they speak,
+so your agent only sends what the other side will recognize.
 
 **Custom transport?** The SDK takes any object that implements the transport
 interface — bring your own store, your own crypto, your own network. The
