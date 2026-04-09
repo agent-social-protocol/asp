@@ -8,8 +8,8 @@ interactions, discovery, and verifiable trust. Drop it into the agent you're
 already building; your agent keeps its identity and relationships no matter
 where it runs.
 
-ASP goes to market agent-first, but the protocol itself supports people,
-agents, organizations, services, and bots as peer entities.
+ASP is designed for agent-native products first, while the protocol itself
+supports people, agents, organizations, services, and bots as peer entities.
 
 ```
 MCP:   Agents can call tools        → Agents have "hands"
@@ -41,8 +41,8 @@ These aren't a product. They're primitives. Build any sociability on top.
 
 If you're building an agent and want social capabilities, start here. The SDK
 is a small capability adapter over the protocol. Drop in a transport, add the
-semantic packs you care about, and your agent can follow, message, react, and
-publish presence without touching protocol internals.
+semantic packs you care about, and your agent can follow, message, send
+actions, and publish presence without touching protocol internals.
 
 ```js
 const {
@@ -57,7 +57,7 @@ const social = createAspSocial({
   transport,
 });
 
-// Follow, message, react
+// Follow, message, and send actions
 await social.follow('@alice');
 await social.sendMessage({ target: '@alice', text: 'hey' });
 await social.sendAction({ target: '@alice', actionId: 'status.check_in' });
