@@ -32,7 +32,7 @@ export const program = new Command();
 
 program
   .name('asp')
-  .description('Agent Social Protocol — CLI for agent-native social networking')
+  .description('Agent Social Protocol — command-line tool for ASP identity, feed, inbox, interactions, and discovery')
   .version(version)
   .option('--json', 'Output in JSON format');
 
