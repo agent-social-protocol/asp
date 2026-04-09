@@ -98,6 +98,16 @@ Stable client methods:
 - `clearPresence`
 - `subscribe`
 
+Draft subpath exports for hosted and internal consumers:
+
+- `asp-social/draft/presence-envelope`
+- `asp-social/draft/target-capabilities`
+- `asp-social/draft/realtime-event`
+
+Treat these draft subpaths as pre-protocol contract surfaces. They are the
+single source for hosted integrations, but they are not yet promoted to the
+stable ASP protocol layer.
+
 ## Current View semantics
 
 `presence` in this phase is the SDK name for a hosted Card / Current View:

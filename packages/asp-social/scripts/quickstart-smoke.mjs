@@ -191,12 +191,16 @@ import {
   createAspSocial,
   createAspSocialNodeRuntime,
 } from "asp-social";
+import * as presenceEnvelopeDraft from "asp-social/draft/presence-envelope";
+import * as targetCapabilitiesDraft from "asp-social/draft/target-capabilities";
 
 assert.equal(typeof createAspSocial, "function");
 assert.equal(typeof createAspSocialNodeRuntime, "function");
 assert.equal(COMPANION_PACK_ID, "companion");
 assert.deepEqual(COMPANION_ACTION_IDS, ["companion.pet", "companion.coffee"]);
 assert.equal(companionPack.id, "companion");
+assert.equal(typeof presenceEnvelopeDraft.buildPresenceSignaturePayload, "function");
+assert.equal(typeof targetCapabilitiesDraft.normalizeTargetCapabilities, "function");
 `;
 
   const requireScriptPath = path.join(consumerDir, "smoke-require.cjs");
