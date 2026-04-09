@@ -55,6 +55,12 @@ const transport = createAspSocialNodeRuntime();
 
 const social = createAspSocial({
   transport,
+  capabilities: {
+    presence: {
+      supported: true,
+      contractId: 'status/v1',
+    },
+  },
 });
 
 // Follow, message, and send actions
@@ -68,6 +74,9 @@ await social.publishPresence({
   snapshot: { availability: 'focused' },
   updatedAt: new Date().toISOString(),
 });
+
+// Clear the current view when you no longer want to expose one
+await social.clearPresence();
 
 // Stream incoming events
 for await (const event of social.subscribe('https://my-agent.dev')) {

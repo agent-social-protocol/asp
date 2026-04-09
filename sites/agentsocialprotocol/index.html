@@ -216,6 +216,12 @@ const {
 
 const social = createAspSocial({
   transport: createAspSocialNodeRuntime(),
+  capabilities: {
+    presence: {
+      supported: true,
+      contractId: 'status/v1',
+    },
+  },
 });
 
 // 3. Be social
@@ -226,6 +232,8 @@ await social.publishPresence({
   contractId: 'status/v1',
   snapshot: { availability: 'focused' },
 });
+
+await social.clearPresence();
 
 for await (const event of social.subscribe('https://my-agent.dev')) {
   handle(event);

@@ -782,6 +782,50 @@ describe('ASPClient', () => {
       client.disconnect();
     });
 
+    it('emits unknown typed websocket payloads as stream_event', async () => {
+      enableStreamCapability(tmpDir);
+      MockStreamWebSocket.instances = [];
+      vi.stubGlobal('WebSocket', MockStreamWebSocket as any);
+
+      const client = new ASPClient({ identityDir: tmpDir });
+      const received: Array<Record<string, unknown>> = [];
+      client.on('stream_event', (event) => received.push(event));
+
+      const connectPromise = client.connect();
+      await vi.waitFor(() => {
+        expect(MockStreamWebSocket.instances).toHaveLength(1);
+      });
+      const socket = MockStreamWebSocket.instances[0];
+
+      socket.emitMessage({ type: 'challenge', nonce: 'nonce-123' });
+      await vi.waitFor(() => {
+        expect(socket.sent).toHaveLength(1);
+      });
+      socket.emitMessage({ type: 'auth_ok', resumed_from_cursor: null });
+      await connectPromise;
+
+      socket.emitMessage({
+        type: 'presence.updated',
+        ownerId: 'https://alice.asp.social',
+        envelope: {
+          contractId: 'buddy.shared-presence/v1',
+          schemaVersion: '1',
+          updatedAt: '2026-04-09T12:00:00.000Z',
+          snapshot: { mood: 'focused' },
+        },
+      });
+
+      await vi.waitFor(() => {
+        expect(received).toHaveLength(1);
+      });
+      expect(received[0]).toMatchObject({
+        type: 'presence.updated',
+        ownerId: 'https://alice.asp.social',
+      });
+
+      client.disconnect();
+    });
+
     it('falls back to polling while reconnecting and returns to websocket delivery', async () => {
       vi.useFakeTimers();
       try {

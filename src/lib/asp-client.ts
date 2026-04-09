@@ -82,6 +82,10 @@ interface HostedWsErrorMessage {
   error: string;
 }
 
+interface HostedWsTypedMessage {
+  type: string;
+}
+
 interface StreamSocketLifecycle {
   socket: WebSocket;
   cleanup: () => void;
@@ -189,6 +193,10 @@ function isHostedWsErrorMessage(value: unknown): value is HostedWsErrorMessage {
   return isRecord(value) && value.type === 'error' && typeof value.error === 'string';
 }
 
+function isHostedWsTypedMessage(value: unknown): value is HostedWsTypedMessage & Record<string, unknown> {
+  return isRecord(value) && typeof value.type === 'string';
+}
+
 function readCloseCode(event: Event): string {
   if ('code' in event && typeof event.code === 'number') {
     return String(event.code);
@@ -200,6 +208,7 @@ export interface ASPClientEventMap {
   entry: [InboxEntry];
   message: [Message];
   interaction: [Interaction];
+  stream_event: [Record<string, unknown>];
   error: [Error];
   delivery_mode_changed: [ASPDeliveryMode];
   connected: [];
@@ -794,6 +803,10 @@ export class ASPClient extends EventEmitter<ASPClientEventMap> {
         });
       }
       return;
+    }
+
+    if (isHostedWsTypedMessage(message)) {
+      this.emit('stream_event', message);
     }
   }
 
