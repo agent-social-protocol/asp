@@ -3,12 +3,41 @@ import yaml from 'js-yaml';
 import { buildHostedEndpoint, normalizeHandle } from '../config/hosted.js';
 import type { Manifest } from '../models/manifest.js';
 
-const LEGACY_HOSTED_DOMAINS = ['letus.social'] as const;
+const DEFAULT_LEGACY_HOSTED_DOMAINS = ['letus.social'] as const;
 
-function parseLegacyHostedEndpoint(endpoint: string): { handle: string; domain: string } | null {
+type LegacyHostedManifestMigrationOptions = {
+  legacyHostedDomains?: readonly string[];
+};
+
+function normalizeLegacyHostedDomains(domains: readonly string[] | undefined): string[] {
+  return (domains ?? [])
+    .map((domain) => typeof domain === 'string' ? domain.trim().toLowerCase() : '')
+    .filter((domain) => domain.length > 0);
+}
+
+function getLegacyHostedDomains(explicitDomains?: readonly string[]): string[] {
+  if (explicitDomains !== undefined) {
+    const normalizedExplicitDomains = normalizeLegacyHostedDomains(explicitDomains);
+    return normalizedExplicitDomains;
+  }
+
+  const envDomains = normalizeLegacyHostedDomains(
+    process.env.ASP_LEGACY_HOSTED_DOMAINS?.split(','),
+  );
+  if (envDomains.length > 0) {
+    return envDomains;
+  }
+
+  return [...DEFAULT_LEGACY_HOSTED_DOMAINS];
+}
+
+function parseLegacyHostedEndpoint(
+  endpoint: string,
+  legacyHostedDomains: readonly string[] = getLegacyHostedDomains(),
+): { handle: string; domain: string } | null {
   try {
     const hostname = new URL(endpoint).hostname.toLowerCase();
-    for (const domain of LEGACY_HOSTED_DOMAINS) {
+    for (const domain of legacyHostedDomains) {
       const suffix = `.${domain}`;
       if (hostname.endsWith(suffix) && hostname !== domain) {
         return {
@@ -39,9 +68,13 @@ function rewriteAbsoluteEndpoint(value: string, previousEndpoint: string, nextEn
 
 export function migrateLegacyHostedManifest(
   manifest: Manifest,
+  options: LegacyHostedManifestMigrationOptions = {},
 ): { ok: true; updated: boolean; previousEndpoint?: string; nextEndpoint?: string; rewrittenEndpointFields: string[] }
  | { ok: false; error: string } {
-  const legacy = parseLegacyHostedEndpoint(manifest.entity.id);
+  const legacy = parseLegacyHostedEndpoint(
+    manifest.entity.id,
+    getLegacyHostedDomains(options.legacyHostedDomains),
+  );
   if (!legacy) {
     return { ok: true, updated: false, rewrittenEndpointFields: [] };
   }
@@ -87,8 +120,9 @@ export function migrateLegacyHostedManifest(
 export function autoMigrateLegacyHostedManifestFile(
   manifestPath: string,
   manifest: Manifest,
+  options: LegacyHostedManifestMigrationOptions = {},
 ): void {
-  const migration = migrateLegacyHostedManifest(manifest);
+  const migration = migrateLegacyHostedManifest(manifest, options);
   if (!migration.ok) {
     throw new Error(migration.error);
   }

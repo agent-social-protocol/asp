@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { migrateLegacyHostedManifest } from '../manifest-migration.js';
 import type { Manifest } from '../../models/manifest.js';
 
+const LEGACY_HOSTED_DOMAIN = 'legacy-hosted.example';
+
 function makeHostedManifest(): Manifest {
   return {
     protocol: 'asp/1.0',
@@ -33,27 +35,29 @@ function makeLegacyHostedManifest(): Manifest {
     ...makeHostedManifest(),
     entity: {
       ...makeHostedManifest().entity,
-      id: 'https://alice.letus.social',
+      id: `https://alice.${LEGACY_HOSTED_DOMAIN}`,
     },
     endpoints: {
-      feed: 'https://alice.letus.social/asp/feed',
-      inbox: 'https://alice.letus.social/asp/inbox',
-      stream: 'https://alice.letus.social/asp/ws',
-      reputation: 'https://alice.letus.social/asp/reputation',
+      feed: `https://alice.${LEGACY_HOSTED_DOMAIN}/asp/feed`,
+      inbox: `https://alice.${LEGACY_HOSTED_DOMAIN}/asp/inbox`,
+      stream: `https://alice.${LEGACY_HOSTED_DOMAIN}/asp/ws`,
+      reputation: `https://alice.${LEGACY_HOSTED_DOMAIN}/asp/reputation`,
     },
   };
 }
 
 describe('migrateLegacyHostedManifest', () => {
-  it('rewrites legacy letus.social hosted endpoints to asp.social', () => {
+  it('rewrites a configured legacy hosted endpoint to the canonical hosted endpoint', () => {
     const manifest = makeLegacyHostedManifest();
 
-    const result = migrateLegacyHostedManifest(manifest);
+    const result = migrateLegacyHostedManifest(manifest, {
+      legacyHostedDomains: [LEGACY_HOSTED_DOMAIN],
+    });
 
     expect(result).toEqual({
       ok: true,
       updated: true,
-      previousEndpoint: 'https://alice.letus.social',
+      previousEndpoint: `https://alice.${LEGACY_HOSTED_DOMAIN}`,
       nextEndpoint: 'https://alice.asp.social',
       rewrittenEndpointFields: ['feed', 'inbox', 'stream', 'reputation'],
     });
@@ -69,7 +73,9 @@ describe('migrateLegacyHostedManifest', () => {
   it('returns unchanged for already-canonical manifests', () => {
     const manifest = makeHostedManifest();
 
-    const result = migrateLegacyHostedManifest(manifest);
+    const result = migrateLegacyHostedManifest(manifest, {
+      legacyHostedDomains: [LEGACY_HOSTED_DOMAIN],
+    });
 
     expect(result).toEqual({
       ok: true,
@@ -83,12 +89,14 @@ describe('migrateLegacyHostedManifest', () => {
     const manifest = makeLegacyHostedManifest();
     manifest.entity.handle = 'bob';
 
-    const result = migrateLegacyHostedManifest(manifest);
+    const result = migrateLegacyHostedManifest(manifest, {
+      legacyHostedDomains: [LEGACY_HOSTED_DOMAIN],
+    });
 
     expect(result).toEqual({
       ok: false,
-      error: 'Local manifest handle "bob" does not match hosted endpoint "https://alice.letus.social".',
+      error: `Local manifest handle "bob" does not match hosted endpoint "https://alice.${LEGACY_HOSTED_DOMAIN}".`,
     });
-    expect(manifest.entity.id).toBe('https://alice.letus.social');
+    expect(manifest.entity.id).toBe(`https://alice.${LEGACY_HOSTED_DOMAIN}`);
   });
 });

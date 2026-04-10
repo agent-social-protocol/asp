@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Manifest } from '../../models/manifest.js';
 
+const LEGACY_HOSTED_DOMAIN = 'legacy-hosted.example';
+
 function makeHostedManifest(): Manifest {
   return {
     protocol: 'asp/1.0',
@@ -32,12 +34,12 @@ function makeLegacyHostedManifest(): Manifest {
     ...makeHostedManifest(),
     entity: {
       ...makeHostedManifest().entity,
-      id: 'https://alice.letus.social',
+      id: `https://alice.${LEGACY_HOSTED_DOMAIN}`,
     },
     endpoints: {
-      feed: 'https://alice.letus.social/asp/feed',
-      inbox: 'https://alice.letus.social/asp/inbox',
-      stream: 'https://alice.letus.social/asp/ws',
+      feed: `https://alice.${LEGACY_HOSTED_DOMAIN}/asp/feed`,
+      inbox: `https://alice.${LEGACY_HOSTED_DOMAIN}/asp/inbox`,
+      stream: `https://alice.${LEGACY_HOSTED_DOMAIN}/asp/ws`,
     },
   };
 }
@@ -107,6 +109,7 @@ async function loadIdentityCommand(mocks: {
 }
 
 afterEach(() => {
+  delete process.env.ASP_LEGACY_HOSTED_DOMAINS;
   process.exitCode = undefined;
   vi.restoreAllMocks();
   vi.resetModules();
@@ -182,8 +185,9 @@ describe('identity edit', () => {
 });
 
 describe('identity migrate-hosted-endpoint', () => {
-  it('rewrites a legacy letus.social hosted identity to the canonical asp.social endpoint and syncs it', async () => {
+  it('rewrites a configured legacy hosted identity to the canonical hosted endpoint and syncs it', async () => {
     const manifest = makeLegacyHostedManifest();
+    process.env.ASP_LEGACY_HOSTED_DOMAINS = LEGACY_HOSTED_DOMAIN;
     const {
       identityCommand,
       readManifest,

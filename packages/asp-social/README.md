@@ -104,7 +104,7 @@ Node runtime behavior:
 - hosted register is idempotent (`/api/register`)
 - hosted write paths work without a separate registration step
 
-Draft subpath exports for hosted and internal consumers:
+Draft subpath exports for hosted and advanced consumers:
 
 - `asp-social/draft/card-envelope`
 - `asp-social/draft/target-capabilities`

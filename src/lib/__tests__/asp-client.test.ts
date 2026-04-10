@@ -14,6 +14,8 @@ import type { ASPClientTransport } from '../types.js';
 import { HostedASPTransport } from '../../hosted/transport.js';
 import { messageToInboxEntry } from '../../utils/inbox-entry.js';
 
+const LEGACY_HOSTED_DOMAIN = 'legacy-hosted.example';
+
 function makeTempIdentity(): {
   dir: string;
   manifest: Manifest;
@@ -170,6 +172,7 @@ describe('ASPClient', () => {
   });
 
   afterEach(() => {
+    delete process.env.ASP_LEGACY_HOSTED_DOMAINS;
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
     fs.rmSync(tmpDir, { recursive: true, force: true });
@@ -183,20 +186,21 @@ describe('ASPClient', () => {
       expect(m.entity.id).toBe('https://alice.asp.social');
     });
 
-    it('auto-migrates a legacy letus.social hosted manifest before loading the client', async () => {
+    it('auto-migrates a configured legacy hosted manifest before loading the client', async () => {
       const legacyManifest = {
         ...manifest,
         entity: {
           ...manifest.entity,
-          id: 'https://alice.letus.social',
+          id: `https://alice.${LEGACY_HOSTED_DOMAIN}`,
         },
         endpoints: {
           ...manifest.endpoints,
-          feed: 'https://alice.letus.social/asp/feed',
-          inbox: 'https://alice.letus.social/asp/inbox',
+          feed: `https://alice.${LEGACY_HOSTED_DOMAIN}/asp/feed`,
+          inbox: `https://alice.${LEGACY_HOSTED_DOMAIN}/asp/inbox`,
         },
       };
       fs.writeFileSync(path.join(tmpDir, 'manifest.yaml'), yaml.dump(legacyManifest));
+      process.env.ASP_LEGACY_HOSTED_DOMAINS = LEGACY_HOSTED_DOMAIN;
 
       const client = new ASPClient({ identityDir: tmpDir });
       const loaded = await client.getManifest();
