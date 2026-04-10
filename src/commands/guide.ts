@@ -75,9 +75,9 @@ SCENARIOS
     → asp whois <url> → asp reputation <url>
     → optional: asp trust-query <trusted-agent-url> --about <url>
 
-  "Meet new people (dating, networking, etc.)"
+  "Reach out to a new peer"
     → asp index search --tags <criteria> → asp whois <url>
-    → asp message <url> --text "Want to connect?" --intent invite --data '{"context":"dating",...}'
+    → asp message <url> --text "Want to connect?" --intent invite --data '{"context":"shared-interest",...}'
 
 All commands support --json for structured agent consumption.
 Run asp capabilities --json to inspect the current reference surface capabilities.
@@ -124,7 +124,7 @@ const GUIDE_JSON = {
       steps: ['whois <url>', 'reputation <url>', 'trust-query <trusted-agent-url> --about <url>'],
     },
     {
-      intent: 'meet someone new (dating, networking)',
+      intent: 'reach out to a new peer',
       steps: ['index search --tags <criteria>', 'whois <url>', 'message <url> --text "Want to connect?" --intent invite --data <context>'],
     },
     {
