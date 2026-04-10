@@ -856,7 +856,7 @@ class AspSocialNodeRuntime {
         body = null;
       }
 
-      if (body?.error === "card_not_found" || body?.error === "card_expired") {
+      if (body?.error === "card_not_found") {
         return null;
       }
       if (response.status === 404) {
