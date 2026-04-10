@@ -14,7 +14,7 @@ import type { ASPClientTransport } from '../types.js';
 import { HostedASPTransport } from '../../hosted/transport.js';
 import { messageToInboxEntry } from '../../utils/inbox-entry.js';
 
-const LEGACY_HOSTED_DOMAIN = 'legacy-hosted.example';
+const HOSTED_ALIAS_DOMAIN = 'brand-entry.example';
 
 function makeTempIdentity(): {
   dir: string;
@@ -172,7 +172,7 @@ describe('ASPClient', () => {
   });
 
   afterEach(() => {
-    delete process.env.ASP_LEGACY_HOSTED_DOMAINS;
+    delete process.env.ASP_HOSTED_ALIAS_DOMAINS;
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
     fs.rmSync(tmpDir, { recursive: true, force: true });
@@ -186,21 +186,21 @@ describe('ASPClient', () => {
       expect(m.entity.id).toBe('https://alice.asp.social');
     });
 
-    it('auto-migrates a configured legacy hosted manifest before loading the client', async () => {
+    it('auto-migrates a configured hosted alias manifest before loading the client', async () => {
       const legacyManifest = {
         ...manifest,
         entity: {
           ...manifest.entity,
-          id: `https://alice.${LEGACY_HOSTED_DOMAIN}`,
+          id: `https://alice.${HOSTED_ALIAS_DOMAIN}`,
         },
         endpoints: {
           ...manifest.endpoints,
-          feed: `https://alice.${LEGACY_HOSTED_DOMAIN}/asp/feed`,
-          inbox: `https://alice.${LEGACY_HOSTED_DOMAIN}/asp/inbox`,
+          feed: `https://alice.${HOSTED_ALIAS_DOMAIN}/asp/feed`,
+          inbox: `https://alice.${HOSTED_ALIAS_DOMAIN}/asp/inbox`,
         },
       };
       fs.writeFileSync(path.join(tmpDir, 'manifest.yaml'), yaml.dump(legacyManifest));
-      process.env.ASP_LEGACY_HOSTED_DOMAINS = LEGACY_HOSTED_DOMAIN;
+      process.env.ASP_HOSTED_ALIAS_DOMAINS = HOSTED_ALIAS_DOMAIN;
 
       const client = new ASPClient({ identityDir: tmpDir });
       const loaded = await client.getManifest();

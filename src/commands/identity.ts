@@ -5,7 +5,7 @@ import { prompt, closePrompts } from '../utils/prompts.js';
 import { output } from '../utils/output.js';
 import { getHostedRuntimeConfig, isHostedEndpoint } from '../config/hosted.js';
 import { syncHostedManifestTargets } from '../hosted/onboarding.js';
-import { migrateLegacyHostedManifest } from '../hosted/manifest-migration.js';
+import { rewriteHostedAliasManifestToCanonicalEndpoint } from '../hosted/manifest-migration.js';
 import type { EntityType, Manifest, Relationship } from '../models/manifest.js';
 
 function parseCsv(input: string): string[] {
@@ -227,7 +227,7 @@ const identityEditCommand = new Command('edit')
   });
 
 const identityMigrateHostedEndpointCommand = new Command('migrate-hosted-endpoint')
-  .description('Migrate a legacy hosted identity to the canonical hosted endpoint')
+  .description('Rewrite a hosted alias identity to the canonical hosted endpoint')
   .action(async (_opts, cmd) => {
     const json = cmd.optsWithGlobals().json;
 
@@ -244,7 +244,7 @@ const identityMigrateHostedEndpointCommand = new Command('migrate-hosted-endpoin
       return;
     }
 
-    const migration = migrateLegacyHostedManifest(manifest);
+    const migration = rewriteHostedAliasManifestToCanonicalEndpoint(manifest);
     if (!migration.ok) {
       output(json ? { error: migration.error } : migration.error, json);
       process.exitCode = 1;
@@ -257,7 +257,7 @@ const identityMigrateHostedEndpointCommand = new Command('migrate-hosted-endpoin
         output({
           status: 'unchanged',
           endpoint: manifest.entity.id,
-          reason: canonicalHostedEndpoint ? 'already_canonical_hosted' : 'not_legacy_hosted',
+          reason: canonicalHostedEndpoint ? 'already_canonical_hosted' : 'not_hosted_alias',
         }, true);
         return;
       }
@@ -265,7 +265,7 @@ const identityMigrateHostedEndpointCommand = new Command('migrate-hosted-endpoin
       if (canonicalHostedEndpoint) {
         console.log('\nHosted endpoint already uses the canonical domain.');
       } else {
-        console.log('\nCurrent endpoint is not a legacy hosted endpoint.');
+        console.log('\nCurrent endpoint is not a configured hosted alias endpoint.');
       }
       console.log(`  Endpoint:  ${manifest.entity.id}`);
       return;

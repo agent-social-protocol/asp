@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Manifest } from '../../models/manifest.js';
 
-const LEGACY_HOSTED_DOMAIN = 'legacy-hosted.example';
+const HOSTED_ALIAS_DOMAIN = 'brand-entry.example';
 
 function makeHostedManifest(): Manifest {
   return {
@@ -34,12 +34,12 @@ function makeLegacyHostedManifest(): Manifest {
     ...makeHostedManifest(),
     entity: {
       ...makeHostedManifest().entity,
-      id: `https://alice.${LEGACY_HOSTED_DOMAIN}`,
+      id: `https://alice.${HOSTED_ALIAS_DOMAIN}`,
     },
     endpoints: {
-      feed: `https://alice.${LEGACY_HOSTED_DOMAIN}/asp/feed`,
-      inbox: `https://alice.${LEGACY_HOSTED_DOMAIN}/asp/inbox`,
-      stream: `https://alice.${LEGACY_HOSTED_DOMAIN}/asp/ws`,
+      feed: `https://alice.${HOSTED_ALIAS_DOMAIN}/asp/feed`,
+      inbox: `https://alice.${HOSTED_ALIAS_DOMAIN}/asp/inbox`,
+      stream: `https://alice.${HOSTED_ALIAS_DOMAIN}/asp/ws`,
     },
   };
 }
@@ -109,7 +109,7 @@ async function loadIdentityCommand(mocks: {
 }
 
 afterEach(() => {
-  delete process.env.ASP_LEGACY_HOSTED_DOMAINS;
+  delete process.env.ASP_HOSTED_ALIAS_DOMAINS;
   process.exitCode = undefined;
   vi.restoreAllMocks();
   vi.resetModules();
@@ -185,9 +185,9 @@ describe('identity edit', () => {
 });
 
 describe('identity migrate-hosted-endpoint', () => {
-  it('rewrites a configured legacy hosted identity to the canonical hosted endpoint and syncs it', async () => {
+  it('rewrites a configured hosted alias identity to the canonical hosted endpoint and syncs it', async () => {
     const manifest = makeLegacyHostedManifest();
-    process.env.ASP_LEGACY_HOSTED_DOMAINS = LEGACY_HOSTED_DOMAIN;
+    process.env.ASP_HOSTED_ALIAS_DOMAINS = HOSTED_ALIAS_DOMAIN;
     const {
       identityCommand,
       readManifest,
@@ -230,7 +230,7 @@ describe('identity migrate-hosted-endpoint', () => {
 
     expect(writeManifest).not.toHaveBeenCalled();
     expect(syncHostedManifestTargets).not.toHaveBeenCalled();
-    expect(logSpy).toHaveBeenCalledWith('\nCurrent endpoint is not a legacy hosted endpoint.');
+    expect(logSpy).toHaveBeenCalledWith('\nCurrent endpoint is not a configured hosted alias endpoint.');
     expect(logSpy).toHaveBeenCalledWith('  Endpoint:  https://alice.example.com');
     expect(process.exitCode).toBeUndefined();
   });

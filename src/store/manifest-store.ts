@@ -2,7 +2,7 @@ import { existsSync } from 'node:fs';
 import { getStorePaths } from './index.js';
 import { loadYaml, dumpYaml } from '../utils/yaml.js';
 import type { Manifest } from '../models/manifest.js';
-import { autoMigrateLegacyHostedManifestFile } from '../hosted/manifest-migration.js';
+import { autoRewriteHostedAliasManifestFile } from '../hosted/manifest-migration.js';
 
 async function loadManifestFromStore(): Promise<Manifest | null> {
   const { manifestPath } = getStorePaths();
@@ -20,7 +20,7 @@ export async function readManifest(
     return manifest;
   }
 
-  autoMigrateLegacyHostedManifestFile(manifestPath, manifest);
+  autoRewriteHostedAliasManifestFile(manifestPath, manifest);
   return manifest;
 }
 

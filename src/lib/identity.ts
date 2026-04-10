@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import yaml from 'js-yaml';
 import { isManifest } from '../models/manifest.js';
 import type { ASPClientIdentity, ASPIdentityProvider } from './types.js';
-import { autoMigrateLegacyHostedManifestFile } from '../hosted/manifest-migration.js';
+import { autoRewriteHostedAliasManifestFile } from '../hosted/manifest-migration.js';
 
 export class FileIdentityProvider implements ASPIdentityProvider {
   constructor(private readonly identityDir: string) {}
@@ -23,7 +23,7 @@ export class FileIdentityProvider implements ASPIdentityProvider {
     if (!isManifest(parsed)) {
       throw new Error('Invalid manifest format');
     }
-    autoMigrateLegacyHostedManifestFile(manifestPath, parsed);
+    autoRewriteHostedAliasManifestFile(manifestPath, parsed);
 
     const keyPath = join(this.identityDir, 'private.pem');
     const encKeyPath = join(this.identityDir, 'encryption.pem');
