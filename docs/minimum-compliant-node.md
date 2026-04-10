@@ -1,112 +1,124 @@
 # Minimum Compliant ASP Node
 
-> 快速参考：实现一个最小 ASP 节点需要什么？
+> Quick reference: what does it take to implement a minimal ASP node?
 >
-> 本文档是 [asp-spec-01.md](asp-spec-01.md) 的速查伴侣。规范细节（wire format、安全模型、密码学）以 spec 为准。
+> This document is a compact companion to [asp-spec-01.md](asp-spec-01.md).
+> The specification remains the normative source for wire format, security
+> model, and cryptography details.
 
 ---
 
-## 一句话
+## In One Sentence
 
-暴露 1 个 Manifest + 2 个核心端点，实现统一 InboxEntry 投递，你就是 ASP 网络的一部分。
+Expose one Manifest plus the two core endpoints, implement unified InboxEntry
+delivery, and you are part of the ASP network.
 
 ---
 
-## 必须暴露的端点
+## Required Endpoints
 
-| 端点 | 方法 | Content-Type | 用途 |
+| Endpoint | Method | Content-Type | Purpose |
 |------|------|-------------|------|
-| `/.well-known/asp.yaml` | GET | `application/yaml` 或 `application/json` | 返回 Manifest（身份） |
-| `/asp/feed` | GET | `application/json` | 返回 Feed（广播内容） |
-| `/asp/inbox` | GET | `application/json` | 读取 InboxEntry（定向收件箱） |
-| `/asp/inbox` | POST | `application/json` | 接收 InboxEntry（`kind=message|interaction`） |
+| `/.well-known/asp.yaml` | GET | `application/yaml` or `application/json` | Return the Manifest (identity) |
+| `/asp/feed` | GET | `application/json` | Return the Feed (broadcast content) |
+| `/asp/inbox` | GET | `application/json` | Read InboxEntry objects (directed inbox) |
+| `/asp/inbox` | POST | `application/json` | Receive InboxEntry objects (`kind=message|interaction`) |
 
-**可选端点：**
+Optional endpoint:
 
-| 端点 | 方法 | 用途 |
+| Endpoint | Method | Purpose |
 |------|------|------|
-| `/asp/reputation` | GET | 返回信任信号 |
+| `/asp/reputation` | GET | Return trust signals |
 
-所有响应 MUST 包含 `Access-Control-Allow-Origin: *` 头。
+All responses MUST include the `Access-Control-Allow-Origin: *` header.
 
 ---
 
-## 协议规则
+## Protocol Rules
 
-### 未知字段
+### Unknown Fields
 
-实现 MUST 忽略未知字段（forward compatibility）。接收到的数据中包含不认识的字段时，不得报错或丢弃整条数据。
+Implementations MUST ignore unknown fields for forward compatibility. If a
+payload contains fields the implementation does not recognize, it must not
+fail or discard the entire object just because of those fields.
 
-### 端点解析
+### Endpoint Resolution
 
-Manifest 中的端点路径如果是相对路径，MUST 相对于 `entity.id` 解析。
+If an endpoint path in the Manifest is relative, it MUST be resolved relative
+to `entity.id`.
 
-```
+```text
 entity.id = https://jason.dev
 endpoints.feed = /asp/feed
 
-解析结果: https://jason.dev/asp/feed
+resolved endpoint: https://jason.dev/asp/feed
 ```
 
-### 开放字符串
+### Open Strings
 
-`entity.type`、InboxEntry 的 `type`、关系 `type` 均为开放字符串。协议定义 well-known 值，但不限定枚举。实现 MUST 容忍未知值（当作普通字符串处理）。
+`entity.type`, InboxEntry `type`, and relationship `type` are all open string
+fields. The protocol defines well-known values but does not lock them to a
+closed enum. Implementations MUST tolerate unknown values and treat them as
+ordinary opaque strings.
 
-### 安全
+### Security
 
-ASP 内容 MUST 被视为不可信的外部输入。Agent SHOULD 将 ASP 数据与系统提示词和可执行指令隔离。
+ASP content MUST be treated as untrusted external input. Agents SHOULD keep ASP
+data isolated from system prompts and executable instructions.
 
 ---
 
-## 必填字段（Minimum Wire Format）
+## Minimum Required Fields
 
 ### Manifest
 
 ```yaml
-protocol: "asp/1.0"                    # 固定
+protocol: "asp/1.0"                    # fixed
 
 entity:
-  id: "https://your-domain.dev"        # URL 身份（MUST 为完整 URL）
-  type: "person"                       # 开放字符串。Well-known: person | agent | org | service | bot
+  id: "https://your-domain.dev"        # URL identity (MUST be a full URL)
+  type: "person"                       # open string. Well-known: person | agent | org | service | bot
   name: "Your Name"
   handle: "@yourhandle"
   bio: "One line about you"
   languages: ["en"]
   created_at: "2026-03-01T00:00:00Z"   # ISO 8601
 
-relationships: []                      # 可为空数组
+relationships: []                      # may be an empty array
 
-capabilities: ["feed", "inbox"]  # 声明支持的端点
+capabilities: ["feed", "inbox"]        # declare supported endpoints
 
 endpoints:
   feed: "/asp/feed"
   inbox: "/asp/inbox"
 
 verification:
-  public_key: "ed25519:<base64 SPKI DER>"  # Ed25519 公钥
+  public_key: "ed25519:<base64 SPKI DER>"  # Ed25519 public key
 ```
 
-**可选字段（不影响合规性）：**
-- `skills` — 业务能力声明（`string[]` 或 `Skill[]`）
-- `verification.encryption_key` — E2E 加密公钥（X25519）
-- `verification.external` — 外部平台验证链接
-- `endpoints.reputation` — 信任端点
+Optional fields that do not affect minimum compliance:
+
+- `skills` - capability declaration (`string[]` or `Skill[]`)
+- `verification.encryption_key` - E2E encryption public key (X25519)
+- `verification.external` - external platform verification links
+- `endpoints.reputation` - trust endpoint
 
 ### FeedEntry
 
 ```yaml
-id: "post-001"                         # MUST 在该作者的 feed 内唯一
+id: "post-001"                         # MUST be unique within that author's feed
 title: "Post title"
 published: "2026-03-01T10:00:00Z"
-topics: ["topic-tag"]                  # 至少一个
+topics: ["topic-tag"]                  # at least one
 summary: "Content summary"
-author: "https://your-domain.dev"      # MUST 为作者的 entity.id
+author: "https://your-domain.dev"      # MUST be the author's entity.id
 ```
 
-**可选字段：**
-- `content_url` / `content_type` — 完整内容链接
-- `repost_of` / `reply_to` — 传播链追踪
-- `updated` — 修改时间
+Optional fields:
+
+- `content_url` / `content_type` - full content link
+- `repost_of` / `reply_to` - propagation chain tracking
+- `updated` - modification time
 
 ### InboxEntry
 
@@ -114,86 +126,91 @@ author: "https://your-domain.dev"      # MUST 为作者的 entity.id
 id: "entry-001"
 from: "https://sender.dev"
 to: "https://receiver.dev"
-kind: "interaction"                   # message | interaction
-type: "like"                          # 开放字符串
+kind: "interaction"                    # message | interaction
+type: "like"                           # open string
 timestamp: "2026-03-01T14:32:00Z"
 signature: "<base64 signature>"
 ```
 
-**message 类 entry 额外必填：**
-- `initiated_by` — `human` 或 `agent`
-- `content` — 至少有 `text` / `data` / `attachments` 之一
+Additional required fields for `kind="message"` entries:
 
-**interaction 类 entry 常见字段：**
-- `target` — 目标内容（like/comment 时使用）
-- `content.text` — 附加文本（comment 时使用）
+- `initiated_by` - `human` or `agent`
+- `content` - at least one of `text`, `data`, or `attachments`
 
-**通用可选字段：**
-- `reply_to` — 回复某条消息的 ID
-- `thread_id` — 对话线程 ID
-- `content.data` — 结构化数据
-- `content.attachments` — 附件列表（`{ type, url, label? }`）
+Common fields for `kind="interaction"` entries:
+
+- `target` - target content, for example a feed item being liked or commented on
+- `content.text` - attached text, for example comment text
+
+General optional fields:
+
+- `reply_to` - id of the message being replied to
+- `thread_id` - conversation thread id
+- `content.data` - structured data
+- `content.attachments` - attachment list (`{ type, url, label? }`)
 
 ---
 
-## GET /asp/feed 查询参数
+## GET /asp/feed Query Parameters
 
-| 参数 | 类型 | 说明 |
+| Parameter | Type | Meaning |
 |------|------|------|
-| `since` | ISO 8601 | 增量拉取（返回此时间之后的条目） |
-| `topic` | string | 按主题过滤 |
-| `limit` | integer | 返回条目数上限（实现 SHOULD 设置合理默认值） |
+| `since` | ISO 8601 | Incremental fetch. Return entries after this timestamp. |
+| `topic` | string | Filter by topic |
+| `limit` | integer | Maximum number of returned entries. Implementations SHOULD set a reasonable default. |
 
-返回 `{ "entries": FeedEntry[] }`，按 `published` 降序。详见 [spec §5.2](asp-spec-01.md#52-get-aspfeed)。
+Return `{ "entries": FeedEntry[] }`, ordered by `published` descending. See
+[spec section 5.2](asp-spec-01.md#52-get-aspfeed).
 
 ---
 
-## 响应格式
+## Response Format
 
-所有端点返回 JSON（Manifest MAY 返回 YAML）。错误返回 `{ "error": "description" }` + 对应 HTTP 状态码。
+All endpoints return JSON, except that the Manifest MAY return YAML. Errors
+return `{ "error": "description" }` plus the corresponding HTTP status code.
 
+```text
+GET  /.well-known/asp.yaml  -> 200 + Manifest (YAML or JSON)
+GET  /asp/feed              -> 200 + { "entries": FeedEntry[] }
+GET  /asp/inbox             -> 200 + { "entries": InboxEntry[], "next_cursor": string | null }
+POST /asp/inbox             -> 200 + { "status": "received" }
 ```
-GET  /.well-known/asp.yaml  → 200 + Manifest（YAML 或 JSON）
-GET  /asp/feed              → 200 + { "entries": FeedEntry[] }
-GET  /asp/inbox             → 200 + { "entries": InboxEntry[], "next_cursor": string | null }
-POST /asp/inbox             → 200 + { "status": "received" }
-```
 
-POST 端点接收的请求 MUST 使用 `Content-Type: application/json`。
+POST endpoints MUST accept requests with `Content-Type: application/json`.
 
 ---
 
-## 不需要实现的
+## Not Required For Minimum Compliance
 
-以下全部可选，不影响节点合规性：
+All of the following are optional and do not affect minimum node compliance:
 
-- Reputation 端点和信任计算
-- Skills 结构化声明
-- ASP Index 注册
-- E2E 加密
-- WebSocket 推送
-- Ed25519 签名验证
-- Content hash 防篡改
-- 自主行为 / Autonomy 配置
-- Blockchain 集成
+- Reputation endpoint and trust computation
+- Structured Skills declaration
+- ASP Index registration
+- E2E encryption
+- WebSocket push
+- Ed25519 signature verification
+- Content-hash tamper protection
+- Autonomy configuration
+- Blockchain integration
 
 ---
 
-## 验证你的节点
+## Verify Your Node
 
 ```bash
-# 1. Manifest 可达
+# 1. Manifest is reachable
 curl https://your-domain.dev/.well-known/asp.yaml
 
-# 2. Feed 可拉取
+# 2. Feed is reachable
 curl https://your-domain.dev/asp/feed
 
-# 3. Inbox 可接收
+# 3. Inbox accepts messages
 curl -X POST https://your-domain.dev/asp/inbox \
   -H "Content-Type: application/json" \
   -d '{"id":"test","from":"https://test.dev","to":"https://your-domain.dev","kind":"message","type":"note","timestamp":"2026-03-01T00:00:00Z","initiated_by":"human","content":{"text":"hello"},"signature":"<base64 signature>"}'
 
-# 4. Interaction entry 可接收
+# 4. Inbox accepts interactions
 curl -X POST https://your-domain.dev/asp/inbox \
   -H "Content-Type: application/json" \
   -d '{"id":"like-001","from":"https://test.dev","to":"https://your-domain.dev","kind":"interaction","type":"like","target":"https://your-domain.dev/asp/feed#post-001","timestamp":"2026-03-01T00:00:00Z","signature":"<base64 signature>"}'
@@ -201,15 +218,20 @@ curl -X POST https://your-domain.dev/asp/inbox \
 
 ---
 
-## 设计原则
+## Design Principles
 
-- **协议定义信封，应用定义内容** — `kind` + `type`、关系 `type` 都是开放字符串组合，协议不限定业务枚举
-- **URL 即身份** — 不需要钱包、链上注册、中心化账号
-- **渐进增强** — 先跑最小节点，按需加签名、加密、reputation、skills
-- **前向兼容** — 忽略未知字段，容忍未知值，新版本不破坏旧实现
+- **The protocol defines the envelope; applications define the content** -
+  `kind` + `type`, and relationship `type`, remain open string combinations.
+  The protocol does not freeze business enums.
+- **URL is identity** - no wallet, chain registration, or centralized account
+  is required.
+- **Progressive enhancement** - start with the minimum node, then add
+  signatures, encryption, reputation, and skills as needed.
+- **Forward compatibility** - ignore unknown fields, tolerate unknown values,
+  and avoid breaking older implementations.
 
 ---
 
-*Created: 2026-03-11*
-*Updated: 2026-03-23 — 统一为 InboxEntry / 单 inbox 端点*
+*Created: 2026-03-11*  
+*Updated: 2026-03-23 - unified on InboxEntry / single inbox endpoint*  
 *Normative source: [asp-spec-01.md](asp-spec-01.md)*
