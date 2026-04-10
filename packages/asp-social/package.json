@@ -9,9 +9,9 @@
       "require": "./index.js",
       "import": "./index.mjs"
     },
-    "./draft/presence-envelope": "./contracts/presence-envelope.js",
-    "./draft/target-capabilities": "./contracts/target-capabilities.js",
-    "./draft/realtime-event": "./contracts/realtime-event.js",
+    "./draft/presence-envelope": "./draft/presence-envelope.js",
+    "./draft/target-capabilities": "./draft/target-capabilities.js",
+    "./draft/realtime-event": "./draft/realtime-event.js",
     "./package.json": "./package.json"
   },
   "scripts": {
@@ -24,6 +24,7 @@
     "README.md",
     "LICENSE",
     "contracts/",
+    "draft/",
     "packs/",
     "create-asp-social.js",
     "create-asp-social-node-runtime.js",
