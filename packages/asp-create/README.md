@@ -6,7 +6,7 @@ This package powers:
 
 - `asp init` flows that need protocol-level onboarding
 - `create-asp-agent`
-- hosted wrappers such as `create-identity` and `letussocial`
+- hosted wrappers built on the same onboarding engine
 
 Protocol defaults stay infrastructure-neutral. Branded wrappers are expected to
 inject their own hosted URLs and user-facing copy via environment overrides.

@@ -227,7 +227,7 @@ const identityEditCommand = new Command('edit')
   });
 
 const identityMigrateHostedEndpointCommand = new Command('migrate-hosted-endpoint')
-  .description('Migrate a legacy hosted .letus.social identity to the canonical hosted endpoint')
+  .description('Migrate a legacy hosted identity to the canonical hosted endpoint')
   .action(async (_opts, cmd) => {
     const json = cmd.optsWithGlobals().json;
 

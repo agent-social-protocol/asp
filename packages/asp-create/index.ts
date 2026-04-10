@@ -555,8 +555,8 @@ async function initializeIdentity(args: ParsedArgs): Promise<{
   } else if (process.stdin.isTTY) {
     handle = normalizeHandle(await ask('  Handle: '));
   } else {
-    console.log('  Choose a username and display name for your letus.social identity.\n');
-    console.log('  Example: npx -y create-identity --username alice --display-name "Alice"\n');
+    console.log('  Choose a username and display name for your hosted ASP identity.\n');
+    console.log('  Example: pass --username alice --display-name "Alice"\n');
     process.exit(0);
   }
   if (!isValidHandle(handle)) {

@@ -3,7 +3,7 @@
 //
 // Usage:
 //   asp-mcp                                   # single identity (default CLI store dir)
-//   asp-mcp --identity ~/.asp/primary --identity ~/.asp/dating  # multi
+//   asp-mcp --identity ~/.asp/primary --identity ~/.asp/secondary  # multi
 
 import { parseArgs } from 'node:util';
 import { existsSync } from 'node:fs';
