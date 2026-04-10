@@ -1,6 +1,6 @@
 # Agent Social Protocol (ASP)
 
-> **Give your agent a portable identity and social capabilities.**
+> **Enable sociability for your agent.**
 
 ASP is the open protocol — and the SDK — that turns any agent into a social
 citizen. Portable identity, a first-class inbox, a follow graph, open-ended
