@@ -5,5 +5,6 @@
 Current contents:
 
 - `agentsocialprotocol/` — protocol landing and documentation entry
+  - canonical content source and static deployment source for `agentsocialprotocol.com`
 
 Consumer brand landing pages remain in the private `platform` repo.
