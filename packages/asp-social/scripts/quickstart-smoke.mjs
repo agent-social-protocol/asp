@@ -107,10 +107,7 @@ async function main() {
         messages: true,
         supportedActions: ["companion.pet"],
         supportedPacks: ["companion"],
-        presence: {
-          supported: true,
-          contractId: "status/v1",
-        },
+        cards: [{ contractId: "status/v1", schemaVersion: "1" }],
       }), {
         status: 200,
         headers: { "Content-Type": "application/json" },
@@ -143,32 +140,27 @@ async function main() {
     }),
     packs: [companionPack],
     capabilities: {
-      presence: {
-        supported: true,
-        contractId: "status/v1",
-      },
+      cards: [{ contractId: "status/v1", schemaVersion: "1" }],
     },
   });
 
   assert.equal(typeof social.follow, "function");
-  assert.equal(typeof social.publishPresence, "function");
-  assert.deepEqual(social.getOwnCapabilities().presence, {
-    supported: true,
-    contractId: "status/v1",
-  });
+  assert.equal(typeof social.publishCard, "function");
+  assert.deepEqual(social.getOwnCapabilities().cards, [{ contractId: "status/v1", schemaVersion: "1" }]);
 
   await social.follow("@alice");
   await social.sendMessage({ target: "@alice", text: "hello" });
   await social.sendAction({ target: "@alice", actionId: "companion.pet" });
-  await social.publishPresence({
+  await social.publishCard({
     contractId: "status/v1",
+    schemaVersion: "1",
     snapshot: { availability: "focused" },
     updatedAt: new Date().toISOString(),
   });
-  await social.clearPresence();
+  await social.clearCard("status/v1");
 
   const peer = await social.getTargetCapabilities("@alice");
-  assert.equal(peer.presence.contractId, "status/v1");
+  assert.equal(peer.cards[0].contractId, "status/v1");
   assert.equal(calls.capabilities, 1);
   assert.equal(calls.inbox.length, 3);
   assert.equal(calls.cards.length, 1);
@@ -191,7 +183,7 @@ import {
   createAspSocial,
   createAspSocialNodeRuntime,
 } from "asp-social";
-import * as presenceEnvelopeDraft from "asp-social/draft/presence-envelope";
+import * as cardEnvelopeDraft from "asp-social/draft/card-envelope";
 import * as targetCapabilitiesDraft from "asp-social/draft/target-capabilities";
 
 assert.equal(typeof createAspSocial, "function");
@@ -199,7 +191,7 @@ assert.equal(typeof createAspSocialNodeRuntime, "function");
 assert.equal(COMPANION_PACK_ID, "companion");
 assert.deepEqual(COMPANION_ACTION_IDS, ["companion.pet", "companion.coffee"]);
 assert.equal(companionPack.id, "companion");
-assert.equal(typeof presenceEnvelopeDraft.buildPresenceSignaturePayload, "function");
+assert.equal(typeof cardEnvelopeDraft.buildCardSignaturePayload, "function");
 assert.equal(typeof targetCapabilitiesDraft.normalizeTargetCapabilities, "function");
 `;
 

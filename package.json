@@ -1,6 +1,6 @@
 {
   "name": "asp-protocol",
-  "version": "0.2.6",
+  "version": "0.3.0",
   "description": "Agent Social Protocol — library and CLI for agent identity, feed, inbox, interactions, discovery, and trust",
   "type": "module",
   "main": "./dist/src/index.js",

@@ -6,7 +6,7 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 
-const { buildPresenceSignaturePayload } = require("./contracts/presence-envelope");
+const { buildCardSignaturePayload } = require("./contracts/card-envelope");
 const { createAspSocial } = require("./create-asp-social");
 const { createAspSocialNodeRuntime } = require("./create-asp-social-node-runtime");
 
@@ -217,10 +217,7 @@ test("createAspSocialNodeRuntime implements the transport surface expected by cr
   const social = createAspSocial({
     transport: runtime,
     capabilities: {
-      presence: {
-        supported: true,
-        contractId: "buddy.shared-presence/v1",
-      },
+      cards: [{ contractId: "buddy.shared-presence/v1", schemaVersion: "1" }],
     },
   });
 
@@ -228,30 +225,28 @@ test("createAspSocialNodeRuntime implements the transport surface expected by cr
     messages: true,
     supportedActions: [],
     supportedPacks: [],
-    presence: {
-      supported: true,
-      contractId: "buddy.shared-presence/v1",
-    },
+    cards: [{ contractId: "buddy.shared-presence/v1", schemaVersion: "1" }],
   };
 
   await social.follow("@alice");
   await social.sendMessage({ target: "@alice", text: "hello" });
-  await social.publishPresence({
+  await social.publishCard({
     contractId: "buddy.shared-presence/v1",
+    schemaVersion: "1",
     snapshot: { mood: "focused" },
     updatedAt: "2026-04-06T00:00:04.000Z",
   });
-  await social.clearPresence();
+  await social.clearCard("buddy.shared-presence/v1");
   const peer = await social.getTargetCapabilities("@alice");
 
-  assert.equal(peer.presence.contractId, "buddy.shared-presence/v1");
+  assert.equal(peer.cards[0].contractId, "buddy.shared-presence/v1");
   assert.equal(state.interactions[0].action, "follow");
   assert.equal(state.messagesSent.length, 1);
   assert.equal(state.cardWrites.length, 1);
   assert.equal(state.cardDeletes.length, 1);
 });
 
-test("createAspSocialNodeRuntime publishes and reads presence through card transport", async () => {
+test("createAspSocialNodeRuntime publishes and reads cards through card transport", async () => {
   const { runtime, state } = makeRuntime();
   const remoteEnvelope = {
     contractId: "buddy.shared-presence/v1",
@@ -262,7 +257,7 @@ test("createAspSocialNodeRuntime publishes and reads presence through card trans
   state.remoteCard = {
     ...remoteEnvelope,
     signature: signPayload(
-      buildPresenceSignaturePayload(remoteEnvelope),
+      buildCardSignaturePayload(remoteEnvelope),
       state.remoteIdentity.privateKey,
     ),
     signedBy: state.remoteIdentity.endpoint,
@@ -271,14 +266,12 @@ test("createAspSocialNodeRuntime publishes and reads presence through card trans
     messages: true,
     supportedActions: [],
     supportedPacks: [],
-    presence: {
-      supported: true,
-      contractId: "buddy.shared-presence/v1",
-    },
+    cards: [{ contractId: "buddy.shared-presence/v1", schemaVersion: "1" }],
   };
 
-  await runtime.publishPresenceEnvelope({
+  await runtime.publishCardEnvelope({
     contractId: "buddy.shared-presence/v1",
+    schemaVersion: "1",
     updatedAt: "2026-04-06T00:00:04.000Z",
     snapshot: {
       publishedStatus: {
@@ -292,19 +285,19 @@ test("createAspSocialNodeRuntime publishes and reads presence through card trans
   assert.equal(state.cardWrites[0].body.contractId, "buddy.shared-presence/v1");
   assert.equal(typeof state.cardWrites[0].body.signature, "string");
 
-  const cleared = await runtime.clearPresence("buddy.shared-presence/v1");
+  const cleared = await runtime.clearCard("buddy.shared-presence/v1");
   assert.equal(state.cardDeletes[0].url, "https://brindle.asp.social/asp/api/cards/buddy.shared-presence%2Fv1");
   assert.match(state.cardDeletes[0].headers.Authorization, /^ASP-Sig /);
   assert.equal(cleared.status, "deleted");
   assert.equal(cleared.existed, true);
 
-  const envelope = await runtime.readPresenceEnvelope("@alice", "buddy.shared-presence/v1");
+  const envelope = await runtime.readCardEnvelope("@alice", "buddy.shared-presence/v1");
   assert.equal(state.cardReads[0].url, "https://alice.asp.social/asp/api/cards/buddy.shared-presence%2Fv1");
   assert.equal(envelope.contractId, "buddy.shared-presence/v1");
   assert.equal(envelope.snapshot.status, "focused");
 
   const capabilities = await runtime.getTargetCapabilities("@alice");
-  assert.equal(capabilities.presence.contractId, "buddy.shared-presence/v1");
+  assert.equal(capabilities.cards[0].contractId, "buddy.shared-presence/v1");
 });
 
 test("createAspSocialNodeRuntime rejects invalid remote card signatures and missing capability discovery", async () => {
@@ -319,8 +312,8 @@ test("createAspSocialNodeRuntime rejects invalid remote card signatures and miss
   };
 
   await assert.rejects(
-    runtime.readPresenceEnvelope("@alice", "buddy.shared-presence/v1"),
-    /invalid presence signature/,
+    runtime.readCardEnvelope("@alice", "buddy.shared-presence/v1"),
+    /invalid card signature/,
   );
 
   await assert.rejects(
@@ -329,7 +322,7 @@ test("createAspSocialNodeRuntime rejects invalid remote card signatures and miss
   );
 });
 
-test("createAspSocialNodeRuntime clears missing presence cards idempotently", async () => {
+test("createAspSocialNodeRuntime clears missing cards idempotently", async () => {
   const { runtime } = makeRuntime({
     fetchImpl: async (url, init = {}) => {
       if ((init.method || "GET").toUpperCase() === "DELETE") {
@@ -342,7 +335,7 @@ test("createAspSocialNodeRuntime clears missing presence cards idempotently", as
     },
   });
 
-  const result = await runtime.clearPresence("buddy.shared-presence/v1");
+  const result = await runtime.clearCard("buddy.shared-presence/v1");
   assert.deepEqual(result, {
     status: "cleared",
     contractId: "buddy.shared-presence/v1",
@@ -403,10 +396,10 @@ test("createAspSocialNodeRuntime supports generic message, action, inbox, and re
   assert.equal(next.value.type, "action.received");
   assert.equal(next.value.item.actionId, "companion.coffee");
 
-  const presencePromise = iterator.next();
+  const cardPromise = iterator.next();
   await new Promise((resolve) => setImmediate(resolve));
   state.client.emit("stream_event", {
-    type: "presence.updated",
+    type: "card.updated",
     ownerId: "https://brindle.asp.social",
     envelope: {
       contractId: "buddy.shared-presence/v1",
@@ -415,22 +408,22 @@ test("createAspSocialNodeRuntime supports generic message, action, inbox, and re
       snapshot: { mood: "focused" },
     },
   });
-  const presenceNext = await presencePromise;
-  assert.equal(presenceNext.done, false);
-  assert.equal(presenceNext.value.type, "presence.updated");
-  assert.equal(presenceNext.value.envelope.contractId, "buddy.shared-presence/v1");
+  const cardNext = await cardPromise;
+  assert.equal(cardNext.done, false);
+  assert.equal(cardNext.value.type, "card.updated");
+  assert.equal(cardNext.value.envelope.contractId, "buddy.shared-presence/v1");
 
   const deletedPromise = iterator.next();
   await new Promise((resolve) => setImmediate(resolve));
   state.client.emit("stream_event", {
-    type: "presence.deleted",
+    type: "card.deleted",
     ownerId: "https://brindle.asp.social",
     contractId: "buddy.shared-presence/v1",
     deletedAt: "2026-04-06T00:00:05.000Z",
   });
   const deletedNext = await deletedPromise;
   assert.equal(deletedNext.done, false);
-  assert.equal(deletedNext.value.type, "presence.deleted");
+  assert.equal(deletedNext.value.type, "card.deleted");
   assert.equal(deletedNext.value.contractId, "buddy.shared-presence/v1");
 
   await iterator.return();

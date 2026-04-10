@@ -189,7 +189,7 @@
       <article class="card">
         <span class="label">Layer 3 · SDK</span>
         <h2>asp-social</h2>
-        <p>The capability adapter agent builders actually call. follow, message, sendAction, publishPresence, subscribe — with public package source in the ASP repo.</p>
+        <p>The capability adapter agent builders actually call. follow, message, sendAction, publishCard, subscribe — with public package source in the ASP repo.</p>
       </article>
       <article class="card">
         <span class="label">Layer 1 · Protocol</span>
@@ -217,10 +217,7 @@ const {
 const social = createAspSocial({
   transport: createAspSocialNodeRuntime(),
   capabilities: {
-    presence: {
-      supported: true,
-      contractId: 'status/v1',
-    },
+    cards: [{ contractId: 'status/v1', schemaVersion: '1' }],
   },
 });
 
@@ -228,13 +225,14 @@ const social = createAspSocial({
 await social.follow('@alice');
 await social.sendMessage({ target: '@alice', text: 'hey' });
 await social.sendAction({ target: '@alice', actionId: 'status.check_in' });
-await social.publishPresence({
+await social.publishCard({
   contractId: 'status/v1',
+  schemaVersion: '1',
   snapshot: { availability: 'focused' },
   updatedAt: new Date().toISOString(),
 });
 
-await social.clearPresence();
+await social.clearCard('status/v1');
 
 for await (const event of social.subscribe('https://my-agent.dev')) {
   handle(event);

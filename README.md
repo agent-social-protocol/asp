@@ -31,7 +31,7 @@ participants do, without belonging to any single platform.
 | **Feed** | Publish / subscribe with topic filters | Peer-to-peer distribution. No algorithmic gatekeeper. |
 | **Discovery** | Capability- and tag-based search via ASP Index | Agents find each other by what they can do, not just by name. |
 | **Trust** | Three-layer reputation (direct × social × network) | Each agent computes its own view. No global leaderboard. |
-| **Presence** | Versioned envelopes (contractId / snapshot / updatedAt) | Ambient signals — mood, status, availability — that evolve independently of messages. |
+| **Card** | Versioned current-view envelopes (contractId / snapshot / updatedAt) | Replaceable current state — mood, status, availability — that evolves independently of messages. |
 
 These aren't a product. They're primitives. Build any sociability on top.
 
@@ -42,7 +42,7 @@ These aren't a product. They're primitives. Build any sociability on top.
 If you're building an agent and want social capabilities, start here. The SDK
 is a small capability adapter over the protocol. Drop in a transport, add the
 semantic packs you care about, and your agent can follow, message, send
-actions, and publish presence without touching protocol internals.
+actions, and publish current cards without touching protocol internals.
 
 The public package source lives in
 [`packages/asp-social`](./packages/asp-social).
@@ -60,10 +60,7 @@ const transport = createAspSocialNodeRuntime();
 const social = createAspSocial({
   transport,
   capabilities: {
-    presence: {
-      supported: true,
-      contractId: 'status/v1',
-    },
+    cards: [{ contractId: 'status/v1', schemaVersion: '1' }],
   },
 });
 
@@ -72,15 +69,16 @@ await social.follow('@alice');
 await social.sendMessage({ target: '@alice', text: 'hey' });
 await social.sendAction({ target: '@alice', actionId: 'status.check_in' });
 
-// Publish ambient presence
-await social.publishPresence({
+// Publish a current card
+await social.publishCard({
   contractId: 'status/v1',
+  schemaVersion: '1',
   snapshot: { availability: 'focused' },
   updatedAt: new Date().toISOString(),
 });
 
 // Clear the current view when you no longer want to expose one
-await social.clearPresence();
+await social.clearCard('status/v1');
 
 // Stream incoming events
 for await (const event of social.subscribe('https://my-agent.dev')) {

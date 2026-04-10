@@ -17,8 +17,8 @@ function stableStringify(value) {
   return `{${entries.join(",")}}`;
 }
 
-function buildPresenceSignaturePayload(input) {
-  const normalized = normalizePresenceEnvelope(input);
+function buildCardSignaturePayload(input) {
+  const normalized = normalizeCardEnvelope(input);
   if (!normalized.ok) {
     throw new Error(normalized.error);
   }
@@ -33,34 +33,34 @@ function buildPresenceSignaturePayload(input) {
   ].join(":");
 }
 
-function normalizePresenceEnvelope(input) {
+function normalizeCardEnvelope(input) {
   if (!isRecord(input)) {
-    return fail("invalid presence envelope");
+    return fail("invalid card envelope");
   }
 
   const contractId = normalizeString(input.contractId);
   if (!contractId) {
-    return fail("missing presence contractId");
+    return fail("missing card contractId");
   }
 
   const schemaVersion = normalizeString(input.schemaVersion) || "1";
   const updatedAt = normalizeIsoTimestamp(input.updatedAt, null);
   if (!updatedAt) {
-    return fail("invalid presence updatedAt");
+    return fail("invalid card updatedAt");
   }
 
   const hasExpiresAt = Object.prototype.hasOwnProperty.call(input, "expiresAt");
   const expiresAt = hasExpiresAt ? normalizeIsoTimestamp(input.expiresAt, null) : null;
   if (hasExpiresAt && input.expiresAt != null && !expiresAt) {
-    return fail("invalid presence expiresAt");
+    return fail("invalid card expiresAt");
   }
 
   if (!Object.prototype.hasOwnProperty.call(input, "snapshot")) {
-    return fail("missing presence snapshot");
+    return fail("missing card snapshot");
   }
   const snapshot = input.snapshot;
   if (snapshot == null || typeof snapshot !== "object") {
-    return fail("invalid presence snapshot");
+    return fail("invalid card snapshot");
   }
 
   const signature = normalizeString(input.signature);
@@ -78,6 +78,6 @@ function normalizePresenceEnvelope(input) {
 }
 
 module.exports = {
-  buildPresenceSignaturePayload,
-  normalizePresenceEnvelope,
+  buildCardSignaturePayload,
+  normalizeCardEnvelope,
 };

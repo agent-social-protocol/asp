@@ -16,25 +16,38 @@ function uniqueStrings(values) {
   return result;
 }
 
-function normalizePresenceCapability(input) {
-  if (input == null) {
-    return {
-      supported: false,
-      contractId: null,
-    };
-  }
+function normalizeCardCapability(input) {
   if (!isRecord(input)) {
-    throw new Error("invalid presence capability");
+    throw new Error("invalid card capability");
   }
-  const supported = Boolean(input.supported);
+
   const contractId = normalizeString(input.contractId);
-  if (supported && !contractId) {
-    throw new Error("presence capability requires contractId");
+  if (!contractId) {
+    throw new Error("card capability requires contractId");
   }
-  return {
-    supported,
-    contractId: supported ? contractId : null,
-  };
+
+  const schemaVersion = normalizeString(input.schemaVersion) || "1";
+  const schemaUrl = normalizeString(input.schemaUrl) || null;
+
+  return schemaUrl
+    ? { contractId, schemaVersion, schemaUrl }
+    : { contractId, schemaVersion };
+}
+
+function normalizeCards(input) {
+  if (input == null) {
+    return [];
+  }
+  if (!Array.isArray(input)) {
+    throw new Error("invalid cards capability list");
+  }
+
+  const cardsByContractId = new Map();
+  for (const card of input) {
+    const normalized = normalizeCardCapability(card);
+    cardsByContractId.set(normalized.contractId, normalized);
+  }
+  return [...cardsByContractId.values()];
 }
 
 function normalizeTargetCapabilities(input) {
@@ -43,19 +56,16 @@ function normalizeTargetCapabilities(input) {
       messages: true,
       supportedActions: [],
       supportedPacks: [],
-      presence: {
-        supported: false,
-        contractId: null,
-      },
+      cards: [],
     });
   }
   if (!isRecord(input)) {
     return fail("invalid target capabilities");
   }
 
-  let presence;
+  let cards;
   try {
-    presence = normalizePresenceCapability(input.presence);
+    cards = normalizeCards(input.cards);
   } catch (error) {
     return fail(error instanceof Error ? error.message : String(error));
   }
@@ -64,7 +74,7 @@ function normalizeTargetCapabilities(input) {
     messages: Object.prototype.hasOwnProperty.call(input, "messages") ? Boolean(input.messages) : true,
     supportedActions: uniqueStrings(input.supportedActions),
     supportedPacks: uniqueStrings(input.supportedPacks),
-    presence,
+    cards,
   });
 }
 
@@ -73,10 +83,7 @@ function mergeTargetCapabilities(...values) {
     messages: true,
     supportedActions: [],
     supportedPacks: [],
-    presence: {
-      supported: false,
-      contractId: null,
-    },
+    cards: [],
   };
 
   for (const value of values) {
@@ -87,12 +94,12 @@ function mergeTargetCapabilities(...values) {
     merged.messages = merged.messages || normalized.value.messages;
     merged.supportedActions = uniqueStrings([...merged.supportedActions, ...normalized.value.supportedActions]);
     merged.supportedPacks = uniqueStrings([...merged.supportedPacks, ...normalized.value.supportedPacks]);
-    if (normalized.value.presence.supported) {
-      merged.presence = {
-        supported: true,
-        contractId: normalized.value.presence.contractId,
-      };
+
+    const cardsByContractId = new Map(merged.cards.map((card) => [card.contractId, card]));
+    for (const card of normalized.value.cards) {
+      cardsByContractId.set(card.contractId, card);
     }
+    merged.cards = [...cardsByContractId.values()];
   }
 
   return merged;

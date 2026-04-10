@@ -6,7 +6,7 @@ It keeps one client surface for:
 
 - `follow / unfollow / listFollowing`
 - `sendMessage / sendAction / listInboxItems`
-- `publishPresence / readPresence / clearPresence / subscribe`
+- `publishCard / readCard / clearCard / subscribe`
 
 ## Install
 
@@ -30,8 +30,8 @@ npm run build
 npm pack
 (cd packages/asp-social && npm pack)
 
-npm install /path/to/asp/asp-protocol-0.2.6.tgz
-npm install /path/to/asp/packages/asp-social/asp-social-0.2.6.tgz
+npm install /path/to/asp/asp-protocol-0.3.0.tgz
+npm install /path/to/asp/packages/asp-social/asp-social-0.3.0.tgz
 ```
 
 `asp-protocol` provides the CLI and the protocol runtime. `asp-social` is the
@@ -54,21 +54,19 @@ const social = createAspSocial({
   transport: createAspSocialNodeRuntime(),
   packs: [companionPack],
   capabilities: {
-    presence: {
-      supported: true,
-      contractId: "status/v1",
-    },
+    cards: [{ contractId: "status/v1", schemaVersion: "1" }],
   },
 });
 
 await social.follow("@alice");
 await social.sendMessage({ target: "@alice", text: "hey" });
-await social.publishPresence({
+await social.publishCard({
   contractId: "status/v1",
+  schemaVersion: "1",
   snapshot: { availability: "focused" },
   updatedAt: new Date().toISOString(),
 });
-await social.clearPresence();
+await social.clearCard("status/v1");
 ```
 
 ## Stable package surface
@@ -93,14 +91,14 @@ Stable client methods:
 - `sendMessage`
 - `sendAction`
 - `listInboxItems`
-- `publishPresence`
-- `readPresence`
-- `clearPresence`
+- `publishCard`
+- `readCard`
+- `clearCard`
 - `subscribe`
 
 Draft subpath exports for hosted and internal consumers:
 
-- `asp-social/draft/presence-envelope`
+- `asp-social/draft/card-envelope`
 - `asp-social/draft/target-capabilities`
 - `asp-social/draft/realtime-event`
 
@@ -108,9 +106,9 @@ Treat these draft subpaths as pre-protocol contract surfaces. They are the
 single source for hosted integrations, but they are not yet promoted to the
 stable ASP protocol layer.
 
-## Current View semantics
+## Card semantics
 
-`presence` in this phase is the SDK name for a hosted Card / Current View:
+`Card` is the ASP SDK primitive for hosted Current View:
 
 | Item | Current meaning |
 | --- | --- |
@@ -119,6 +117,29 @@ stable ASP protocol layer.
 | discovery | hosted target capability discovery backed by declared card capability |
 | storage | Hub `current_cards` |
 | history | not feed-backed authority |
+
+### Card vs Manifest
+
+Manifest is stable identity declaration and discovery. Card is replaceable
+current state. Card data does not belong in `asp/Manifest`, and the Manifest
+model is intentionally unchanged in this phase.
+
+### Card vs Feed
+
+Feed is history. Card is current value. A Card can be mirrored into history by a
+vertical, but Feed is not the authority for current Card state.
+
+### Card vs Service Contract
+
+Card addresses `identity + contractId -> current snapshot`. Service contracts
+address `service + operation + params -> result`. They are complementary
+machine-readable surfaces, not a single merged abstraction.
+
+### Card vs Interaction
+
+Interaction is an event (`message`, `action`, inbox delivery). Card is a
+replaceable snapshot. Interactions may cause a vertical to update its Card, but
+they are not the same primitive and should not share authority semantics.
 
 ## Phase boundaries
 
@@ -131,14 +152,33 @@ stable ASP protocol layer.
 
 This means:
 
-- own capabilities must declare `presence.supported = true` and a matching
-  `contractId` before `publishPresence`, `readPresence`, or `clearPresence`
-- Node runtime `Current View` is hosted-only in this phase
-- no fallback back to feed
+- own capabilities must declare a matching `cards[].contractId` before
+  `publishCard`
+- `readCard(target, contractId)` does not require the reader to declare the same card
+- Node runtime Card support is hosted-only in this phase
+- there is no fallback back to feed
 - unsupported hosted capability discovery fails fast
+
+### Unresolved edges
+
+- General Card ACL policy is unresolved and intentionally not frozen in this package
+- Card TTL / expiry remains part of the draft envelope semantics
+- Schema bump policy for Card contracts remains draft-stage
+
+## Draft → Stable promotion
+
+The `./draft/*` exports are pre-protocol contract surfaces. They become stable
+exports only when all of the following hold:
+
+- two or more independent apps consume the same draft contract in production
+- the envelope shape has remained unchanged for at least 6 months
+- an external implementation (self-host, third-party host, or protocol peer)
+  has requested compatibility
+
+Removing the `/draft/` qualifier is a protocol-level decision, not a refactor.
 
 ## Versioning
 
 `asp-social` currently tracks `asp-protocol` in lockstep. Treat the package
-surface as public, and treat `contracts/*` as pre-protocol draft internals
-unless and until they are promoted explicitly.
+surface as public, and treat `draft/*` as pre-protocol contract surfaces unless
+and until they are promoted explicitly.

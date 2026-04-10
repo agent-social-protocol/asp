@@ -2,7 +2,7 @@
 // promotion into the public ASP protocol layer is explicit.
 const { fail, isRecord, normalizeIsoTimestamp, normalizeString, ok } = require("./common");
 const { normalizeInboxItem } = require("./inbox-item");
-const { normalizePresenceEnvelope } = require("./presence-envelope");
+const { normalizeCardEnvelope } = require("./card-envelope");
 
 function normalizeRealtimeEvent(input) {
   if (!isRecord(input)) {
@@ -31,12 +31,12 @@ function normalizeRealtimeEvent(input) {
     });
   }
 
-  if (type === "presence.updated") {
+  if (type === "card.updated") {
     const ownerId = normalizeString(input.ownerId);
     if (!ownerId) {
-      return fail("presence.updated requires ownerId");
+      return fail("card.updated requires ownerId");
     }
-    const normalized = normalizePresenceEnvelope(input.envelope);
+    const normalized = normalizeCardEnvelope(input.envelope);
     if (!normalized.ok) {
       return normalized;
     }
@@ -47,18 +47,18 @@ function normalizeRealtimeEvent(input) {
     });
   }
 
-  if (type === "presence.deleted") {
+  if (type === "card.deleted") {
     const ownerId = normalizeString(input.ownerId);
     if (!ownerId) {
-      return fail("presence.deleted requires ownerId");
+      return fail("card.deleted requires ownerId");
     }
     const contractId = normalizeString(input.contractId);
     if (!contractId) {
-      return fail("presence.deleted requires contractId");
+      return fail("card.deleted requires contractId");
     }
     const deletedAt = normalizeIsoTimestamp(input.deletedAt, null);
     if (!deletedAt) {
-      return fail("presence.deleted requires deletedAt");
+      return fail("card.deleted requires deletedAt");
     }
     return ok({
       type,

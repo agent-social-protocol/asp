@@ -1,6 +1,6 @@
 const { normalizeString } = require("./contracts/common");
+const { normalizeCardEnvelope } = require("./contracts/card-envelope");
 const { normalizeInboxItem } = require("./contracts/inbox-item");
-const { normalizePresenceEnvelope } = require("./contracts/presence-envelope");
 const { normalizeRealtimeEvent } = require("./contracts/realtime-event");
 const { mergeTargetCapabilities, normalizeTargetCapabilities } = require("./contracts/target-capabilities");
 
@@ -31,6 +31,16 @@ function normalizeInboxItems(items) {
   });
 }
 
+function cloneCardCapability(card) {
+  return card.schemaUrl
+    ? { contractId: card.contractId, schemaVersion: card.schemaVersion, schemaUrl: card.schemaUrl }
+    : { contractId: card.contractId, schemaVersion: card.schemaVersion };
+}
+
+function findDeclaredCard(cards, contractId) {
+  return cards.find((card) => card.contractId === contractId) || null;
+}
+
 function wrapRealtimeStream(stream) {
   if (!stream || typeof stream[Symbol.asyncIterator] !== "function") {
     throw new Error("asp-social transport returned invalid realtime stream");
@@ -56,7 +66,7 @@ function createAspSocial({ transport, capabilities = null, packs = [] } = {}) {
 
   const normalizedPacks = normalizePacks(packs);
   const ownCapabilities = mergeTargetCapabilities(
-    { messages: true, supportedActions: [], supportedPacks: [], presence: { supported: false, contractId: null } },
+    { messages: true, supportedActions: [], supportedPacks: [], cards: [] },
     ...normalizedPacks.map((pack) => pack.capabilities || null),
     capabilities
   );
@@ -67,7 +77,7 @@ function createAspSocial({ transport, capabilities = null, packs = [] } = {}) {
         messages: ownCapabilities.messages,
         supportedActions: [...ownCapabilities.supportedActions],
         supportedPacks: [...ownCapabilities.supportedPacks],
-        presence: { ...ownCapabilities.presence },
+        cards: ownCapabilities.cards.map(cloneCardCapability),
       };
     },
 
@@ -170,43 +180,46 @@ function createAspSocial({ transport, capabilities = null, packs = [] } = {}) {
       return wrapRealtimeStream(requiredTransport(transport, "subscribe")(normalizedOwnerId));
     },
 
-    async publishPresence(envelope) {
-      const normalized = normalizePresenceEnvelope(envelope);
+    async publishCard(envelope) {
+      const normalized = normalizeCardEnvelope(envelope);
       if (!normalized.ok) {
         throw new Error(normalized.error);
       }
-      if (!ownCapabilities.presence.supported || !ownCapabilities.presence.contractId) {
-        throw new Error("own capabilities must declare a presence contractId to publish presence");
+      const declaredCard = findDeclaredCard(ownCapabilities.cards, normalized.value.contractId);
+      if (!declaredCard) {
+        throw new Error("own capabilities must declare this card contractId before publishCard");
       }
-      if (normalized.value.contractId !== ownCapabilities.presence.contractId) {
-        throw new Error("presence contractId does not match own capabilities");
+      if (normalized.value.schemaVersion !== declaredCard.schemaVersion) {
+        throw new Error("card schemaVersion does not match own capabilities");
       }
-      return requiredTransport(transport, "publishPresence")(normalized.value);
+      return requiredTransport(transport, "publishCard")(normalized.value);
     },
 
-    async clearPresence() {
-      if (!ownCapabilities.presence.supported || !ownCapabilities.presence.contractId) {
-        throw new Error("own capabilities must declare a presence contractId to clear presence");
+    async clearCard(contractId) {
+      const normalizedContractId = normalizeString(contractId);
+      if (!normalizedContractId) {
+        throw new Error("missing card contractId");
       }
-      return requiredTransport(transport, "clearPresence")(ownCapabilities.presence.contractId);
+      return requiredTransport(transport, "clearCard")(normalizedContractId);
     },
 
-    async readPresence(target) {
+    async readCard(target, contractId) {
       const normalizedTarget = normalizeString(target);
+      const normalizedContractId = normalizeString(contractId);
       if (!normalizedTarget) {
         throw new Error("missing target");
       }
-      if (!ownCapabilities.presence.supported || !ownCapabilities.presence.contractId) {
-        throw new Error("own capabilities must declare a presence contractId to read presence");
+      if (!normalizedContractId) {
+        throw new Error("missing card contractId");
       }
-      const envelope = await requiredTransport(transport, "readPresence")(
+      const envelope = await requiredTransport(transport, "readCard")(
         normalizedTarget,
-        ownCapabilities.presence.contractId,
+        normalizedContractId,
       );
       if (envelope == null) {
         return null;
       }
-      const normalized = normalizePresenceEnvelope(envelope);
+      const normalized = normalizeCardEnvelope(envelope);
       if (!normalized.ok) {
         throw new Error(normalized.error);
       }

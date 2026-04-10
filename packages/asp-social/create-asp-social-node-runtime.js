@@ -7,8 +7,8 @@ const { createPublicKey, verify } = require("node:crypto");
 const yaml = require("js-yaml");
 
 const { normalizeString } = require("./contracts/common");
+const { buildCardSignaturePayload, normalizeCardEnvelope } = require("./contracts/card-envelope");
 const { normalizeInboxItem } = require("./contracts/inbox-item");
-const { buildPresenceSignaturePayload, normalizePresenceEnvelope } = require("./contracts/presence-envelope");
 const { normalizeRealtimeEvent } = require("./contracts/realtime-event");
 const { normalizeTargetCapabilities } = require("./contracts/target-capabilities");
 
@@ -487,13 +487,13 @@ class AspSocialNodeRuntime {
     return this.listFollowingHandles();
   }
 
-  async publishPresenceEnvelope(envelope) {
-    const normalized = normalizePresenceEnvelope(envelope);
+  async publishCardEnvelope(envelope) {
+    const normalized = normalizeCardEnvelope(envelope);
     if (!normalized.ok) {
       throw new Error(normalized.error);
     }
 
-    const signedEnvelope = await this.#signPresenceEnvelope(normalized.value);
+    const signedEnvelope = await this.#signCardEnvelope(normalized.value);
     const shareUrl = await this.getShareUrl();
     if (!shareUrl) {
       throw new Error("missing hosted endpoint");
@@ -510,7 +510,7 @@ class AspSocialNodeRuntime {
       body: JSON.stringify(signedEnvelope),
     });
     if (response.status === 404) {
-      throw new Error("presence publish unavailable for this endpoint");
+      throw new Error("card publish unavailable for this endpoint");
     }
     if (!response.ok) {
       throw new Error(await readErrorMessage(response));
@@ -518,14 +518,14 @@ class AspSocialNodeRuntime {
     return await response.json();
   }
 
-  async publishPresence(envelope) {
-    return this.publishPresenceEnvelope(envelope);
+  async publishCard(envelope) {
+    return this.publishCardEnvelope(envelope);
   }
 
-  async clearPresence(contractId = null) {
+  async clearCard(contractId = null) {
     const normalizedContractId = normalizeString(contractId);
     if (!normalizedContractId) {
-      throw new Error("missing presence contractId");
+      throw new Error("missing card contractId");
     }
 
     const shareUrl = await this.getShareUrl();
@@ -556,7 +556,7 @@ class AspSocialNodeRuntime {
           existed: false,
         };
       }
-      throw new Error("presence clear unavailable for this endpoint");
+      throw new Error("card clear unavailable for this endpoint");
     }
 
     if (!response.ok) {
@@ -569,10 +569,10 @@ class AspSocialNodeRuntime {
     };
   }
 
-  async readPresenceEnvelope(target, contractId = null) {
+  async readCardEnvelope(target, contractId = null) {
     const normalizedContractId = normalizeString(contractId);
     if (!normalizedContractId) {
-      throw new Error("missing presence contractId");
+      throw new Error("missing card contractId");
     }
 
     const targetIdentity = await this.#loadTargetIdentity(target);
@@ -596,41 +596,41 @@ class AspSocialNodeRuntime {
         return null;
       }
       if (response.status === 404) {
-        throw new Error("presence read unavailable for target endpoint");
+        throw new Error("card read unavailable for target endpoint");
       }
     }
     if (!response.ok) {
       throw new Error(await readErrorMessage(response));
     }
 
-    const normalized = normalizePresenceEnvelope(await response.json());
+    const normalized = normalizeCardEnvelope(await response.json());
     if (!normalized.ok) {
       throw new Error(normalized.error);
     }
     const envelope = normalized.value;
     if (envelope.contractId !== normalizedContractId) {
-      throw new Error("presence contractId mismatch");
+      throw new Error("card contractId mismatch");
     }
     if (!normalizeString(envelope.signature)) {
-      throw new Error("missing presence signature");
+      throw new Error("missing card signature");
     }
     if (!matchesSignedByIdentity(envelope.signedBy, targetIdentity)) {
-      throw new Error("presence signedBy mismatch");
+      throw new Error("card signedBy mismatch");
     }
 
     const validSignature = verifyPayloadSignature(
-      buildPresenceSignaturePayload(envelope),
+      buildCardSignaturePayload(envelope),
       envelope.signature,
       targetIdentity.publicKey,
     );
     if (!validSignature) {
-      throw new Error("invalid presence signature");
+      throw new Error("invalid card signature");
     }
     return envelope;
   }
 
-  async readPresence(target, contractId = null) {
-    return this.readPresenceEnvelope(target, contractId);
+  async readCard(target, contractId = null) {
+    return this.readCardEnvelope(target, contractId);
   }
 
   async sendMessage(targetOrInput, text = null, metadata = null) {
@@ -853,7 +853,7 @@ class AspSocialNodeRuntime {
             };
 
             const onStreamEvent = (event) => {
-              if (!event || (event.type !== "presence.updated" && event.type !== "presence.deleted")) {
+              if (!event || (event.type !== "card.updated" && event.type !== "card.deleted")) {
                 return;
               }
               const normalized = normalizeRealtimeEvent(event);
@@ -1019,7 +1019,7 @@ class AspSocialNodeRuntime {
     return `ASP-Sig ${endpoint}:${timestamp}:${signature}`;
   }
 
-  async #signPresenceEnvelope(envelope) {
+  async #signCardEnvelope(envelope) {
     const [privateKey, mod] = await Promise.all([
       this.getPrivateKey(),
       this.getModule(),
@@ -1030,7 +1030,7 @@ class AspSocialNodeRuntime {
 
     return {
       ...envelope,
-      signature: mod.signPayload(buildPresenceSignaturePayload(envelope), privateKey),
+      signature: mod.signPayload(buildCardSignaturePayload(envelope), privateKey),
     };
   }
 }

@@ -24,10 +24,7 @@ const companionPack = Object.freeze({
     messages: true,
     supportedActions: COMPANION_ACTION_IDS,
     supportedPacks: [COMPANION_PACK_ID],
-    presence: {
-      supported: false,
-      contractId: null,
-    },
+    cards: [],
   },
 });
 

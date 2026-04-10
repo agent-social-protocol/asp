@@ -8,10 +8,7 @@ test("createAspSocial merges pack capabilities and delegates sends", async () =>
   const social = createAspSocial({
     packs: [companionPack],
     capabilities: {
-      presence: {
-        supported: true,
-        contractId: "buddy.shared-presence/v1",
-      },
+      cards: [{ contractId: "buddy.shared-presence/v1", schemaVersion: "1" }],
     },
     transport: {
       async getShareUrl() {
@@ -26,10 +23,7 @@ test("createAspSocial merges pack capabilities and delegates sends", async () =>
           messages: true,
           supportedActions: [],
           supportedPacks: [],
-          presence: {
-            supported: true,
-            contractId: "buddy.shared-presence/v1",
-          },
+          cards: [{ contractId: "buddy.shared-presence/v1", schemaVersion: "1" }],
         };
       },
       async follow(target) {
@@ -74,17 +68,18 @@ test("createAspSocial merges pack capabilities and delegates sends", async () =>
           },
         };
       },
-      async publishPresence(envelope) {
-        calls.push(["publishPresence", envelope]);
+      async publishCard(envelope) {
+        calls.push(["publishCard", envelope]);
       },
-      async clearPresence(contractId) {
-        calls.push(["clearPresence", contractId]);
+      async clearCard(contractId) {
+        calls.push(["clearCard", contractId]);
         return { status: "cleared", contractId, existed: true };
       },
-      async readPresence(target, contractId) {
-        calls.push(["readPresence", { target, contractId }]);
+      async readCard(target, contractId) {
+        calls.push(["readCard", { target, contractId }]);
         return {
           contractId: "buddy.shared-presence/v1",
+          schemaVersion: "1",
           snapshot: { foo: "bar" },
           updatedAt: "2026-04-06T00:00:02.000Z",
         };
@@ -96,21 +91,19 @@ test("createAspSocial merges pack capabilities and delegates sends", async () =>
     messages: true,
     supportedActions: ["companion.pet", "companion.coffee"],
     supportedPacks: ["companion"],
-    presence: {
-      supported: true,
-      contractId: "buddy.shared-presence/v1",
-    },
+    cards: [{ contractId: "buddy.shared-presence/v1", schemaVersion: "1" }],
   });
 
   await social.follow("@alice");
   await social.sendMessage({ target: "@alice", text: "hello" });
   await social.sendAction({ target: "@alice", actionId: "companion.pet" });
-  await social.publishPresence({
+  await social.publishCard({
     contractId: "buddy.shared-presence/v1",
+    schemaVersion: "1",
     snapshot: { foo: "bar" },
     updatedAt: "2026-04-06T00:00:03.000Z",
   });
-  const cleared = await social.clearPresence();
+  const cleared = await social.clearCard("buddy.shared-presence/v1");
   assert.equal(cleared.status, "cleared");
   assert.equal(cleared.contractId, "buddy.shared-presence/v1");
 
@@ -123,14 +116,14 @@ test("createAspSocial merges pack capabilities and delegates sends", async () =>
   assert.equal(next.value.type, "action.received");
   await iter.return?.();
 
-  const envelope = await social.readPresence("@alice");
+  const envelope = await social.readCard("@alice", "buddy.shared-presence/v1");
   assert.equal(envelope.contractId, "buddy.shared-presence/v1");
   const targetCapabilities = await social.getTargetCapabilities("@alice");
-  assert.equal(targetCapabilities.presence.contractId, "buddy.shared-presence/v1");
+  assert.equal(targetCapabilities.cards[0].contractId, "buddy.shared-presence/v1");
   const connection = await social.getConnectionState();
   assert.equal(connection.status, "ready");
 
-  assert.deepEqual(calls.map((entry) => entry[0]), ["follow", "message", "action", "publishPresence", "clearPresence", "readPresence", "getTargetCapabilities"]);
+  assert.deepEqual(calls.map((entry) => entry[0]), ["follow", "message", "action", "publishCard", "clearCard", "readCard", "getTargetCapabilities"]);
   assert.equal(calls[4][1], "buddy.shared-presence/v1");
   assert.deepEqual(calls[5][1], {
     target: "@alice",
@@ -139,7 +132,7 @@ test("createAspSocial merges pack capabilities and delegates sends", async () =>
   assert.equal(calls[6][1], "@alice");
 });
 
-test("createAspSocial fails fast when presence is undeclared or transport discovery is unavailable", async () => {
+test("createAspSocial fails fast when card publish is undeclared or transport discovery is unavailable", async () => {
   const social = createAspSocial({
     transport: {
       async getShareUrl() {
@@ -163,9 +156,9 @@ test("createAspSocial fails fast when presence is undeclared or transport discov
           async *[Symbol.asyncIterator]() {},
         };
       },
-      async publishPresence() {},
-      async clearPresence() {},
-      async readPresence() {
+      async publishCard() {},
+      async clearCard() {},
+      async readCard() {
         return null;
       },
     },
@@ -177,16 +170,16 @@ test("createAspSocial fails fast when presence is undeclared or transport discov
   );
 
   await assert.rejects(
-    social.publishPresence({
+    social.publishCard({
       contractId: "buddy.shared-presence/v1",
+      schemaVersion: "1",
       snapshot: { foo: "bar" },
       updatedAt: "2026-04-06T00:00:03.000Z",
     }),
-    /own capabilities must declare a presence contractId to publish presence/,
+    /own capabilities must declare this card contractId before publishCard/,
   );
 
-  await assert.rejects(
-    social.clearPresence(),
-    /own capabilities must declare a presence contractId to clear presence/,
-  );
+  await assert.rejects(social.clearCard(), /missing card contractId/);
+
+  assert.equal(await social.readCard("@alice", "buddy.shared-presence/v1"), null);
 });
