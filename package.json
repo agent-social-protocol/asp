@@ -23,8 +23,10 @@
     "prebuild": "node -e \"import { rmSync } from 'node:fs'; rmSync('dist', { recursive: true, force: true });\"",
     "dev": "tsx bin/asp.ts",
     "build": "tsc",
-    "test": "vitest run",
-    "test:watch": "vitest"
+    "test": "npm run test:core && npm run test:packages",
+    "test:core": "vitest run --exclude 'packages/**'",
+    "test:packages": "npm --prefix packages/asp-social test",
+    "test:watch": "vitest --exclude 'packages/**'"
   },
   "keywords": [
     "agent",
