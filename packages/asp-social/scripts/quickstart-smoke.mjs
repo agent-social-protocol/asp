@@ -72,7 +72,6 @@ async function main() {
   const { generateKeyPair, createDefaultManifest } = await import("asp-protocol");
   const calls = {
     register: [],
-    bootstrap: [],
     inbox: [],
     cards: [],
     deletes: [],
@@ -112,26 +111,6 @@ async function main() {
         handle: "smoke",
       }), {
         status: 201,
-        headers: { "Content-Type": "application/json" },
-      });
-    }
-
-    if (target.pathname === "/api/sdk/bootstrap" && method === "POST") {
-      const body = JSON.parse(init.body);
-      calls.bootstrap.push({
-        url: target.toString(),
-        headers: init.headers,
-        body,
-      });
-      return new Response(JSON.stringify({
-        status: "bootstrapped",
-        handle: "smoke",
-        installId: body.installId,
-        appId: body.appId,
-        runtime: body.runtime,
-        sdkVersion: body.sdkVersion,
-      }), {
-        status: 200,
         headers: { "Content-Type": "application/json" },
       });
     }
@@ -208,11 +187,6 @@ async function main() {
   assert.equal(calls.register.length, 1);
   assert.equal(calls.register[0].body.handle, "smoke");
   assert.equal(calls.register[0].body.public_key.startsWith("ed25519:"), true);
-  assert.equal(calls.bootstrap.length, 1);
-  assert.equal(typeof calls.bootstrap[0].body.installId, "string");
-  assert.equal(calls.bootstrap[0].body.appId, "consumer");
-  assert.equal(calls.bootstrap[0].body.runtime, "node");
-  assert.equal(typeof calls.bootstrap[0].headers.Authorization, "string");
   assert.equal(calls.inbox.length, 3);
   assert.equal(calls.cards.length, 1);
   assert.equal(typeof calls.cards[0].signature, "string");

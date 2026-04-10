@@ -400,6 +400,7 @@ class AspSocialNodeRuntime {
     hubApiBaseUrl = null,
     appId = null,
     installId = null,
+    experimentalHostedInstallBootstrap = false,
     fetchImpl = globalThis.fetch.bind(globalThis),
   } = {}) {
     this.identityDir = normalizeIdentityDir(identityDir);
@@ -408,6 +409,7 @@ class AspSocialNodeRuntime {
     this.hubApiBaseUrl = resolveHostedApiBaseUrl(hubApiBaseUrl, this.hostedHandleDomain);
     this.appId = resolveAppId(appId);
     this.installId = normalizeString(installId);
+    this.experimentalHostedInstallBootstrap = experimentalHostedInstallBootstrap === true;
     this.fetchImpl = fetchImpl;
     this.modulePromise = null;
     this.clientPromise = null;
@@ -600,6 +602,9 @@ class AspSocialNodeRuntime {
     }
 
     await this.#ensureHostedIdentityRegistered();
+    if (!this.experimentalHostedInstallBootstrap) {
+      return;
+    }
     try {
       await this.#ensureHostedInstallBootstrapped();
     } catch (error) {

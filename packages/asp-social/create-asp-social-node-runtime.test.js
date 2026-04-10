@@ -245,7 +245,7 @@ test("createAspSocialNodeRuntime follows and unfollows with local following pers
   });
   assert.deepEqual(await runtime.listFollowingHandles(), []);
   assert.equal(state.registerCalls.length, 1);
-  assert.equal(state.bootstrapCalls.length, 1);
+  assert.equal(state.bootstrapCalls.length, 0);
 });
 
 test("createAspSocialNodeRuntime implements the transport surface expected by createAspSocial", async () => {
@@ -281,7 +281,7 @@ test("createAspSocialNodeRuntime implements the transport surface expected by cr
   assert.equal(state.cardWrites.length, 1);
   assert.equal(state.cardDeletes.length, 1);
   assert.equal(state.registerCalls.length, 1);
-  assert.equal(state.bootstrapCalls.length, 1);
+  assert.equal(state.bootstrapCalls.length, 0);
 });
 
 test("createAspSocialNodeRuntime publishes and reads cards through card transport", async () => {
@@ -319,7 +319,7 @@ test("createAspSocialNodeRuntime publishes and reads cards through card transpor
   });
 
   assert.equal(state.registerCalls.length, 1);
-  assert.equal(state.bootstrapCalls.length, 1);
+  assert.equal(state.bootstrapCalls.length, 0);
   assert.equal(state.cardWrites[0].url, "https://brindle.asp.social/asp/api/cards/buddy.shared-presence%2Fv1");
   assert.match(state.cardWrites[0].headers.Authorization, /^ASP-Sig /);
   assert.equal(state.cardWrites[0].body.contractId, "buddy.shared-presence/v1");
@@ -340,13 +340,27 @@ test("createAspSocialNodeRuntime publishes and reads cards through card transpor
   assert.equal(capabilities.cards[0].contractId, "buddy.shared-presence/v1");
 });
 
-test("createAspSocialNodeRuntime keeps the primary action path alive when sdk bootstrap fails", async () => {
+test("createAspSocialNodeRuntime can opt into hosted install bootstrap", async () => {
+  const { runtime, state } = makeRuntime({
+    experimentalHostedInstallBootstrap: true,
+  });
+
+  await runtime.followHandle("@alice");
+  assert.equal(state.interactions.length, 1);
+  assert.equal(state.registerCalls.length, 1);
+  assert.equal(state.bootstrapCalls.length, 1);
+  assert.equal(state.bootstrapCalls[0].body.appId, "test-app");
+  assert.equal(state.bootstrapCalls[0].body.runtime, "node");
+});
+
+test("createAspSocialNodeRuntime keeps the primary action path alive when opted-in sdk bootstrap fails", async () => {
   const warnings = [];
   const originalWarn = console.warn;
   console.warn = (message) => warnings.push(String(message));
 
   try {
     const { runtime, state } = makeRuntime({
+      experimentalHostedInstallBootstrap: true,
       fetchImpl: async (url, init = {}) => {
         const method = (init.method || "GET").toUpperCase();
         const parsedUrl = new URL(url);
@@ -409,12 +423,6 @@ test("createAspSocialNodeRuntime clears missing cards idempotently", async () =>
       if (method === "POST" && parsedUrl.pathname === "/api/register") {
         return new Response(JSON.stringify({ status: "registered", endpoint: "https://brindle.asp.social", handle: "brindle" }), {
           status: 201,
-          headers: { "Content-Type": "application/json" },
-        });
-      }
-      if (method === "POST" && parsedUrl.pathname === "/api/sdk/bootstrap") {
-        return new Response(JSON.stringify({ status: "bootstrapped", handle: "brindle", installId: "install-1" }), {
-          status: 200,
           headers: { "Content-Type": "application/json" },
         });
       }

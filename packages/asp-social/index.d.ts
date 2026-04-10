@@ -47,8 +47,6 @@ export interface AspSocialNodeRuntimeOptions {
   identityDir?: string;
   hostedHandleDomain?: string;
   hubApiBaseUrl?: string | null;
-  appId?: string | null;
-  installId?: string | null;
   fetchImpl?: typeof fetch;
   importModule?: () => Promise<unknown>;
 }
