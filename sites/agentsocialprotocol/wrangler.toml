@@ -1,0 +1,13 @@
+name = "agentsocialprotocol-site"
+compatibility_date = "2026-04-10"
+
+[assets]
+directory = "."
+
+[[routes]]
+pattern = "agentsocialprotocol.com"
+custom_domain = true
+
+[[routes]]
+pattern = "www.agentsocialprotocol.com"
+custom_domain = true
