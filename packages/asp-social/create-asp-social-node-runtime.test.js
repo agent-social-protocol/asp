@@ -39,6 +39,9 @@ function createMockAspModule(state) {
           handle: "@brindle",
           name: "Brindle",
         },
+        verification: {
+          public_key: state.localIdentity.publicKey,
+        },
       };
     }
 
@@ -100,8 +103,13 @@ function makeRuntime(overrides = {}) {
   fs.writeFileSync(path.join(identityDir, "private.pem"), "test-private-key");
 
   const state = {
+    localIdentity: {
+      publicKey: "ed25519:local-public-key",
+    },
     interactions: [],
     messagesSent: [],
+    registerCalls: [],
+    bootstrapCalls: [],
     cardWrites: [],
     cardDeletes: [],
     cardReads: [],
@@ -122,6 +130,31 @@ function makeRuntime(overrides = {}) {
   const fetchImpl = async (url, init = {}) => {
     const method = (init.method || "GET").toUpperCase();
     const parsedUrl = new URL(url);
+    if (method === "POST" && parsedUrl.pathname === "/api/register") {
+      const body = JSON.parse(init.body);
+      state.registerCalls.push({
+        url: parsedUrl.toString(),
+        body,
+      });
+      return new Response(JSON.stringify({ status: "registered", endpoint: "https://brindle.asp.social", handle: "brindle" }), {
+        status: 201,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    if (method === "POST" && parsedUrl.pathname === "/api/sdk/bootstrap") {
+      const body = JSON.parse(init.body);
+      state.bootstrapCalls.push({
+        url: parsedUrl.toString(),
+        headers: init.headers,
+        body,
+      });
+      return new Response(JSON.stringify({ status: "bootstrapped", handle: "brindle", installId: body.installId }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
     if (method === "PUT") {
       const body = JSON.parse(init.body);
       state.cardWrites.push({
@@ -177,6 +210,7 @@ function makeRuntime(overrides = {}) {
 
   const runtime = createAspSocialNodeRuntime({
     identityDir,
+    appId: "test-app",
     importModule: async () => createMockAspModule(state),
     fetchImpl,
     ...overrides,
@@ -210,6 +244,8 @@ test("createAspSocialNodeRuntime follows and unfollows with local following pers
     opts: undefined,
   });
   assert.deepEqual(await runtime.listFollowingHandles(), []);
+  assert.equal(state.registerCalls.length, 1);
+  assert.equal(state.bootstrapCalls.length, 1);
 });
 
 test("createAspSocialNodeRuntime implements the transport surface expected by createAspSocial", async () => {
@@ -244,6 +280,8 @@ test("createAspSocialNodeRuntime implements the transport surface expected by cr
   assert.equal(state.messagesSent.length, 1);
   assert.equal(state.cardWrites.length, 1);
   assert.equal(state.cardDeletes.length, 1);
+  assert.equal(state.registerCalls.length, 1);
+  assert.equal(state.bootstrapCalls.length, 1);
 });
 
 test("createAspSocialNodeRuntime publishes and reads cards through card transport", async () => {
@@ -280,6 +318,8 @@ test("createAspSocialNodeRuntime publishes and reads cards through card transpor
     },
   });
 
+  assert.equal(state.registerCalls.length, 1);
+  assert.equal(state.bootstrapCalls.length, 1);
   assert.equal(state.cardWrites[0].url, "https://brindle.asp.social/asp/api/cards/buddy.shared-presence%2Fv1");
   assert.match(state.cardWrites[0].headers.Authorization, /^ASP-Sig /);
   assert.equal(state.cardWrites[0].body.contractId, "buddy.shared-presence/v1");
@@ -298,6 +338,45 @@ test("createAspSocialNodeRuntime publishes and reads cards through card transpor
 
   const capabilities = await runtime.getTargetCapabilities("@alice");
   assert.equal(capabilities.cards[0].contractId, "buddy.shared-presence/v1");
+});
+
+test("createAspSocialNodeRuntime keeps the primary action path alive when sdk bootstrap fails", async () => {
+  const warnings = [];
+  const originalWarn = console.warn;
+  console.warn = (message) => warnings.push(String(message));
+
+  try {
+    const { runtime, state } = makeRuntime({
+      fetchImpl: async (url, init = {}) => {
+        const method = (init.method || "GET").toUpperCase();
+        const parsedUrl = new URL(url);
+        if (method === "POST" && parsedUrl.pathname === "/api/register") {
+          state.registerCalls.push({ url: parsedUrl.toString(), body: JSON.parse(init.body) });
+          return new Response(JSON.stringify({ status: "registered", endpoint: "https://brindle.asp.social", handle: "brindle" }), {
+            status: 201,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+        if (method === "POST" && parsedUrl.pathname === "/api/sdk/bootstrap") {
+          state.bootstrapCalls.push({ url: parsedUrl.toString() });
+          return new Response(JSON.stringify({ error: "bootstrap_failed" }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+        throw new Error(`unexpected fetch ${url}`);
+      },
+    });
+
+    await runtime.followHandle("@alice");
+    assert.equal(state.interactions.length, 1);
+    assert.equal(state.registerCalls.length, 1);
+    assert.equal(state.bootstrapCalls.length, 1);
+    assert.equal(warnings.length, 1);
+    assert.match(warnings[0], /sdk bootstrap skipped/);
+  } finally {
+    console.warn = originalWarn;
+  }
 });
 
 test("createAspSocialNodeRuntime rejects invalid remote card signatures and missing capability discovery", async () => {
@@ -325,7 +404,21 @@ test("createAspSocialNodeRuntime rejects invalid remote card signatures and miss
 test("createAspSocialNodeRuntime clears missing cards idempotently", async () => {
   const { runtime } = makeRuntime({
     fetchImpl: async (url, init = {}) => {
-      if ((init.method || "GET").toUpperCase() === "DELETE") {
+      const method = (init.method || "GET").toUpperCase();
+      const parsedUrl = new URL(url);
+      if (method === "POST" && parsedUrl.pathname === "/api/register") {
+        return new Response(JSON.stringify({ status: "registered", endpoint: "https://brindle.asp.social", handle: "brindle" }), {
+          status: 201,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (method === "POST" && parsedUrl.pathname === "/api/sdk/bootstrap") {
+        return new Response(JSON.stringify({ status: "bootstrapped", handle: "brindle", installId: "install-1" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (method === "DELETE") {
         return new Response(JSON.stringify({ error: "card_not_found" }), {
           status: 404,
           headers: { "Content-Type": "application/json" },

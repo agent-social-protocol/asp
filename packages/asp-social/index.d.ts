@@ -43,8 +43,18 @@ export interface CreateAspSocialOptions {
 
 export function createAspSocial(options: CreateAspSocialOptions): AspSocialClient;
 
+export interface AspSocialNodeRuntimeOptions {
+  identityDir?: string;
+  hostedHandleDomain?: string;
+  hubApiBaseUrl?: string | null;
+  appId?: string | null;
+  installId?: string | null;
+  fetchImpl?: typeof fetch;
+  importModule?: () => Promise<unknown>;
+}
+
 export class AspSocialNodeRuntime {
-  constructor(options?: Record<string, unknown>);
+  constructor(options?: AspSocialNodeRuntimeOptions);
   getShareUrl(): Promise<string | null>;
   getConnectionState(): Promise<unknown>;
   getTargetCapabilities(target: string): Promise<TargetCapabilities>;
@@ -62,7 +72,7 @@ export class AspSocialNodeRuntime {
   subscribe(ownerId?: string | null): AsyncIterable<RealtimeEvent>;
 }
 
-export function createAspSocialNodeRuntime(options?: Record<string, unknown>): AspSocialNodeRuntime;
+export function createAspSocialNodeRuntime(options?: AspSocialNodeRuntimeOptions): AspSocialNodeRuntime;
 
 export const DEFAULT_ASP_IDENTITY_DIR: string;
 export const COMPANION_ACTION_IDS: string[];

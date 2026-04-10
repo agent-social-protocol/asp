@@ -5,6 +5,7 @@ const { mkdir, readFile, writeFile } = require("fs/promises");
 const { pathToFileURL } = require("url");
 const { createPublicKey, verify } = require("node:crypto");
 const yaml = require("js-yaml");
+const packageMetadata = require("./package.json");
 
 const { normalizeString } = require("./contracts/common");
 const { buildCardSignaturePayload, normalizeCardEnvelope } = require("./contracts/card-envelope");
@@ -16,6 +17,13 @@ const DEFAULT_ASP_IDENTITY_DIR = process.env.ASP_STORE_DIR || path.join(os.homed
 const WORKSPACE_ASP_PROTOCOL_ENTRY = path.join(__dirname, "..", "..", "dist", "src", "index.js");
 const CARD_API_PREFIX = "/asp/api/cards/";
 const TARGET_CAPABILITIES_API_PATH = "/asp/api/target-capabilities";
+const HOSTED_REGISTER_API_PATH = "/api/register";
+const SDK_BOOTSTRAP_API_PATH = "/api/sdk/bootstrap";
+const SDK_INSTALL_STATE_PATH = path.join(".runtime", "sdk-install.json");
+const SDK_RUNTIME_LABEL = "node";
+const SDK_VERSION = typeof packageMetadata?.version === "string" && packageMetadata.version.trim() !== ""
+  ? packageMetadata.version.trim()
+  : "0.0.0";
 
 function normalizeIdentityDir(identityDir) {
   const normalized = normalizeString(identityDir);
@@ -98,6 +106,93 @@ function buildEndpointUrl(baseUrl, pathname) {
     throw new Error("missing endpoint url");
   }
   return new URL(pathname, `${normalizedBaseUrl.replace(/\/+$/, "")}/`).toString();
+}
+
+function looksLikeHostedEndpoint(endpoint, hostedHandleDomain) {
+  const normalizedEndpoint = normalizeString(endpoint);
+  const normalizedDomain = normalizeString(hostedHandleDomain);
+  if (!normalizedEndpoint || !normalizedDomain) {
+    return false;
+  }
+
+  try {
+    const hostname = new URL(normalizedEndpoint).hostname.toLowerCase();
+    const domain = normalizedDomain.toLowerCase();
+    return hostname.endsWith(`.${domain}`) && hostname !== domain;
+  } catch {
+    return false;
+  }
+}
+
+function normalizeHandle(value) {
+  const normalized = normalizeString(value);
+  return normalized ? normalized.replace(/^@/, "") : null;
+}
+
+function resolveHostedApiBaseUrl(explicitUrl, hostedHandleDomain) {
+  const explicit = normalizeString(explicitUrl) || normalizeString(process.env.ASP_HUB_API_URL);
+  if (explicit) {
+    return explicit.replace(/\/+$/, "");
+  }
+  return `${accountDomainOrigin(hostedHandleDomain)}/api`;
+}
+
+function findPackageJsonName(startDir) {
+  let current = normalizeString(startDir) || process.cwd();
+  while (current) {
+    const packageJsonPath = path.join(current, "package.json");
+    try {
+      const parsed = JSON.parse(fs.readFileSync(packageJsonPath, "utf8"));
+      const name = normalizeString(parsed?.name);
+      if (name) {
+        return name;
+      }
+    } catch {
+      // Ignore missing or invalid package.json and keep walking.
+    }
+
+    const parent = path.dirname(current);
+    if (!parent || parent === current) {
+      break;
+    }
+    current = parent;
+  }
+  return null;
+}
+
+function resolveAppId(explicitAppId) {
+  const candidates = [
+    normalizeString(explicitAppId),
+    normalizeString(process.env.ASP_SOCIAL_APP_ID),
+    normalizeString(process.env.npm_package_name),
+    findPackageJsonName(process.cwd()),
+  ];
+  for (const candidate of candidates) {
+    if (candidate) {
+      return candidate;
+    }
+  }
+  return "unknown";
+}
+
+function deriveHostedHandle(manifest, hostedHandleDomain) {
+  const handleFromManifest = normalizeHandle(manifest?.entity?.handle);
+  if (handleFromManifest) {
+    return handleFromManifest;
+  }
+
+  const endpoint = normalizeString(manifest?.entity?.id);
+  if (!looksLikeHostedEndpoint(endpoint, hostedHandleDomain)) {
+    return null;
+  }
+
+  try {
+    const hostname = new URL(endpoint).hostname;
+    const suffix = `.${hostedHandleDomain.toLowerCase()}`;
+    return hostname.toLowerCase().slice(0, -suffix.length);
+  } catch {
+    return null;
+  }
 }
 
 function verifyPayloadSignature(payload, signatureB64, publicKey) {
@@ -302,15 +397,23 @@ class AspSocialNodeRuntime {
     identityDir = DEFAULT_ASP_IDENTITY_DIR,
     importModule = importAspProtocol,
     hostedHandleDomain = "asp.social",
+    hubApiBaseUrl = null,
+    appId = null,
+    installId = null,
     fetchImpl = globalThis.fetch.bind(globalThis),
   } = {}) {
     this.identityDir = normalizeIdentityDir(identityDir);
     this.importModule = importModule;
     this.hostedHandleDomain = normalizeString(hostedHandleDomain) || "asp.social";
+    this.hubApiBaseUrl = resolveHostedApiBaseUrl(hubApiBaseUrl, this.hostedHandleDomain);
+    this.appId = resolveAppId(appId);
+    this.installId = normalizeString(installId);
     this.fetchImpl = fetchImpl;
     this.modulePromise = null;
     this.clientPromise = null;
     this.privateKeyPromise = null;
+    this.hostedRegistrationPromise = null;
+    this.hostedBootstrapPromise = null;
   }
 
   async getModule() {
@@ -351,6 +454,158 @@ class AspSocialNodeRuntime {
         });
     }
     return this.privateKeyPromise;
+  }
+
+  async #getHostedContext() {
+    const manifest = await this.getManifest();
+    const endpoint = normalizeString(manifest?.entity?.id);
+    if (!looksLikeHostedEndpoint(endpoint, this.hostedHandleDomain)) {
+      return null;
+    }
+
+    const handle = deriveHostedHandle(manifest, this.hostedHandleDomain);
+    const publicKey = normalizeString(manifest?.verification?.public_key);
+    if (!endpoint || !handle || !publicKey) {
+      throw new Error("hosted bootstrap requires manifest.entity.id, entity.handle, and verification.public_key");
+    }
+
+    return {
+      handle,
+      endpoint: endpoint.replace(/\/+$/, ""),
+      publicKey,
+      manifest,
+      apiBaseUrl: this.hubApiBaseUrl,
+    };
+  }
+
+  async #ensureHostedIdentityRegistered() {
+    const context = await this.#getHostedContext();
+    if (!context) {
+      return { status: "self_hosted" };
+    }
+
+    if (!this.hostedRegistrationPromise) {
+      this.hostedRegistrationPromise = (async () => {
+        const response = await this.fetchImpl(buildEndpointUrl(context.apiBaseUrl, HOSTED_REGISTER_API_PATH), {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json",
+          },
+          body: JSON.stringify({
+            handle: context.handle,
+            manifest: context.manifest,
+            public_key: context.publicKey,
+          }),
+        });
+        if (!response.ok) {
+          throw new Error(await readErrorMessage(response));
+        }
+        return response.json();
+      })().catch((error) => {
+        this.hostedRegistrationPromise = null;
+        throw error;
+      });
+    }
+
+    return this.hostedRegistrationPromise;
+  }
+
+  async #resolveInstallIdentity() {
+    if (this.installId) {
+      return {
+        installId: this.installId,
+        appId: this.appId,
+        sdkVersion: SDK_VERSION,
+        runtime: SDK_RUNTIME_LABEL,
+      };
+    }
+
+    const filePath = path.join(this.identityDir, SDK_INSTALL_STATE_PATH);
+    await mkdir(path.dirname(filePath), { recursive: true });
+    const raw = await readFile(filePath, "utf8").catch((error) => {
+      if (error?.code === "ENOENT") {
+        return null;
+      }
+      throw error;
+    });
+
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw);
+        const installId = normalizeString(parsed?.installId);
+        if (installId) {
+          return {
+            installId,
+            appId: this.appId,
+            sdkVersion: SDK_VERSION,
+            runtime: SDK_RUNTIME_LABEL,
+          };
+        }
+      } catch {
+        // Fall through and rewrite a clean install state.
+      }
+    }
+
+    const installState = {
+      installId: crypto.randomUUID(),
+      createdAt: new Date().toISOString(),
+    };
+    await writeFile(filePath, JSON.stringify(installState, null, 2) + "\n", "utf8");
+
+    return {
+      installId: installState.installId,
+      appId: this.appId,
+      sdkVersion: SDK_VERSION,
+      runtime: SDK_RUNTIME_LABEL,
+    };
+  }
+
+  async #ensureHostedInstallBootstrapped() {
+    const context = await this.#getHostedContext();
+    if (!context) {
+      return { status: "self_hosted" };
+    }
+
+    if (!this.hostedBootstrapPromise) {
+      this.hostedBootstrapPromise = (async () => {
+        const install = await this.#resolveInstallIdentity();
+        const pathname = SDK_BOOTSTRAP_API_PATH;
+        const response = await this.fetchImpl(buildEndpointUrl(context.apiBaseUrl, pathname), {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json",
+            Authorization: await this.#buildAuthHeader("POST", pathname),
+          },
+          body: JSON.stringify(install),
+        });
+        if (!response.ok) {
+          throw new Error(await readErrorMessage(response));
+        }
+        return response.json();
+      })().catch((error) => {
+        this.hostedBootstrapPromise = null;
+        throw error;
+      });
+    }
+
+    return this.hostedBootstrapPromise;
+  }
+
+  async #ensureHostedReadyForMutation() {
+    const context = await this.#getHostedContext();
+    if (!context) {
+      return;
+    }
+
+    await this.#ensureHostedIdentityRegistered();
+    try {
+      await this.#ensureHostedInstallBootstrapped();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn(`[asp-social] sdk bootstrap skipped: ${message}`);
+    }
   }
 
   async getShareUrl() {
@@ -433,6 +688,7 @@ class AspSocialNodeRuntime {
   }
 
   async followHandle(handle) {
+    await this.#ensureHostedReadyForMutation();
     const targetUrl = await this.resolveTarget(handle);
     const client = await this.getClient();
     const result = await client.interact(targetUrl, "follow");
@@ -462,6 +718,7 @@ class AspSocialNodeRuntime {
   }
 
   async unfollowHandle(handle) {
+    await this.#ensureHostedReadyForMutation();
     const targetUrl = await this.resolveTarget(handle);
     const client = await this.getClient();
     const result = await client.interact(targetUrl, "unfollow");
@@ -488,6 +745,7 @@ class AspSocialNodeRuntime {
   }
 
   async publishCardEnvelope(envelope) {
+    await this.#ensureHostedReadyForMutation();
     const normalized = normalizeCardEnvelope(envelope);
     if (!normalized.ok) {
       throw new Error(normalized.error);
@@ -523,6 +781,7 @@ class AspSocialNodeRuntime {
   }
 
   async clearCard(contractId = null) {
+    await this.#ensureHostedReadyForMutation();
     const normalizedContractId = normalizeString(contractId);
     if (!normalizedContractId) {
       throw new Error("missing card contractId");
@@ -634,6 +893,7 @@ class AspSocialNodeRuntime {
   }
 
   async sendMessage(targetOrInput, text = null, metadata = null) {
+    await this.#ensureHostedReadyForMutation();
     const input = targetOrInput && typeof targetOrInput === "object"
       ? targetOrInput
       : { target: targetOrInput, text, metadata };
@@ -663,6 +923,7 @@ class AspSocialNodeRuntime {
   }
 
   async sendAction(targetOrInput, actionId = null, payload = null, metadata = null) {
+    await this.#ensureHostedReadyForMutation();
     const input = targetOrInput && typeof targetOrInput === "object"
       ? targetOrInput
       : { target: targetOrInput, actionId, payload, metadata };

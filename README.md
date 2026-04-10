@@ -55,7 +55,9 @@ const {
 } = require('asp-social');
 
 // Node runtime reads the local ASP identity (created by `asp init`)
-const transport = createAspSocialNodeRuntime();
+const transport = createAspSocialNodeRuntime({
+  appId: 'terminal-buddy',
+});
 
 const social = createAspSocial({
   transport,
@@ -93,6 +95,14 @@ if (peer.supportedActions.includes('status.check_in')) {
   await social.sendAction({ target: '@alice', actionId: 'status.check_in' });
 }
 ```
+
+For hosted identities, the Node runtime automatically:
+
+- registers the hosted identity idempotently on first hosted write
+- bootstraps a stable install record (`installId`, `appId`, `sdkVersion`, `runtime`)
+
+That metadata powers the hosted console without forcing developer account
+creation before the first successful use.
 
 **Semantic packs** are how you extend the inbox without branching the
 protocol. `companionPack` is one example pack; it registers

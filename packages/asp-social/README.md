@@ -8,6 +8,12 @@ It keeps one client surface for:
 - `sendMessage / sendAction / listInboxItems`
 - `publishCard / readCard / clearCard / subscribe`
 
+For hosted identities, the Node runtime now does two things automatically on
+the first hosted write path:
+
+- idempotent hosted identity registration against Hub
+- hosted install bootstrap (`installId`, `appId`, `sdkVersion`, `runtime`)
+
 ## Install
 
 ### Current release phase
@@ -51,7 +57,9 @@ const {
 } = require("asp-social");
 
 const social = createAspSocial({
-  transport: createAspSocialNodeRuntime(),
+  transport: createAspSocialNodeRuntime({
+    appId: "terminal-buddy",
+  }),
   packs: [companionPack],
   capabilities: {
     cards: [{ contractId: "status/v1", schemaVersion: "1" }],
@@ -68,6 +76,10 @@ await social.publishCard({
 });
 await social.clearCard("status/v1");
 ```
+
+`installId` is generated and persisted automatically for the Node runtime under
+your ASP identity directory. You do not need to provide it manually unless you
+want to pin a specific installation identity.
 
 ## Stable package surface
 
@@ -95,6 +107,13 @@ Stable client methods:
 - `readCard`
 - `clearCard`
 - `subscribe`
+
+Node runtime behavior:
+
+- hosted register is idempotent (`/api/register`)
+- hosted install bootstrap is best-effort and does not block the main action
+- `appId` can be passed explicitly; otherwise the runtime tries
+  `ASP_SOCIAL_APP_ID`, `npm_package_name`, then the nearest `package.json`
 
 Draft subpath exports for hosted and internal consumers:
 
