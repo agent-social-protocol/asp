@@ -1,5 +1,9 @@
 const { createAspSocial } = require("./create-asp-social");
-const { createAspSocialNodeRuntime } = require("./create-asp-social-node-runtime");
+const {
+  AspSocialNodeRuntime,
+  DEFAULT_ASP_IDENTITY_DIR,
+  createAspSocialNodeRuntime,
+} = require("./create-asp-social-node-runtime");
 const {
   COMPANION_ACTION_IDS,
   COMPANION_PACK_ID,
@@ -9,6 +13,8 @@ const {
 module.exports = {
   COMPANION_ACTION_IDS,
   COMPANION_PACK_ID,
+  DEFAULT_ASP_IDENTITY_DIR,
+  AspSocialNodeRuntime,
   companionPack,
   createAspSocial,
   createAspSocialNodeRuntime,
