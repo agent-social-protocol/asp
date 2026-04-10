@@ -15,7 +15,7 @@
     "./package.json": "./package.json"
   },
   "scripts": {
-    "test": "node --test ./create-asp-social.test.js ./create-asp-social-node-runtime.test.js",
+    "test": "node --test ./create-asp-social.test.js ./create-asp-social-node-runtime.test.js ./draft-entrypoints.test.js",
     "smoke": "node ./scripts/quickstart-smoke.mjs"
   },
   "files": [
