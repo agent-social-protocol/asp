@@ -42,7 +42,8 @@ Use the layers for what they are:
 - Use `asp-social` when you are integrating social capabilities into an
   existing agent product.
 - Use `asp init` when you want a protocol-native local identity bootstrap.
-- Use `asp-create` only for hosted or wrapper onboarding flows. It is an
+- Use `asp-create` for onboarding orchestration flows, including managed,
+  self-hosted, provider-managed, and branded wrapper entry points. It is an
   onboarding engine, not the SDK entry point.
 
 ### 1. `asp-social` SDK — the fastest path
