@@ -45,7 +45,7 @@ export const followCommand = new Command('follow')
       output(
         json
           ? { error: 'Not initialized', next: 'asp init' }
-          : 'Not initialized. Run `asp init` to create a local identity first, or `npx create-asp-agent` for the public onboarding flow.',
+          : 'Not initialized. Run `asp init` to create a local identity first.',
         json,
       );
       process.exitCode = 1;
